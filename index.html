@@ -89,14 +89,24 @@
   .row-actions { white-space: nowrap; text-align: right; }
   .nowrap-table th, .nowrap-table td { white-space: nowrap; }
   .stock-table .cell-input { width: 90px; min-width: 0; }
+  .seg { display: inline-flex; border: 1px solid var(--accent); border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
+  .seg-btn { font-family: inherit; font-size: 14px; font-weight: 500; padding: 8px 20px; border: none; background: var(--surface); color: var(--accent); cursor: pointer; }
+  .seg-btn.active { background: var(--accent); color: #fff; }
   .sale-grid { width: 100%; max-width: 640px; table-layout: fixed; border-collapse: collapse; }
   .sale-grid th { font-size: 12px; padding: 4px 6px 6px 0; border-bottom: none; text-align: left; }
   .sale-grid td { padding: 4px 6px 4px 0; border-bottom: none; vertical-align: middle; }
-  .sale-grid th:first-child, .sale-grid td.sg-label { width: 30%; }
+  .sale-grid td.sg-label { width: 36%; }
+  .sale-grid td.sg-input { max-width: 240px; }
   .sale-grid td.sg-label { font-weight: 700; font-size: 14px; }
   .sale-grid .sg-x { width: 32px; padding-right: 0; }
   .sale-grid .cell-input, .sale-grid .cell-select { width: 100%; min-width: 0; }
   .sale-grid .fr-seller { font-size: 14px; padding: 6px 4px; }
+  .friend-grid { width: 100%; max-width: 640px; table-layout: fixed; border-collapse: collapse; }
+  .friend-grid th { font-size: 12px; padding: 2px 4px 4px 0; border-bottom: none; }
+  .friend-grid td { padding: 3px 4px 3px 0; border-bottom: none; }
+  .friend-grid th:nth-child(1) { width: 27%; } .friend-grid th:nth-child(2) { width: 22%; }
+  .friend-grid th:nth-child(3) { width: 25%; } .friend-grid .sg-x { width: 26px; padding-right: 0; }
+  .friend-grid .cell-input, .friend-grid .cell-select { width: 100%; min-width: 0; font-size: 14px; padding: 6px 4px; }
   .ex-table { width: 100%; max-width: 560px; table-layout: fixed; }
   .ex-table td { padding: 4px 6px 4px 0; border-bottom: none; }
   .ex-table td:nth-child(1) { width: 28%; font-weight: 500; white-space: normal; }
@@ -212,12 +222,18 @@
     </div>
     <div class="card">
       <h2 id="s-heading">売上を記録</h2>
+      <div class="seg" id="s-mode">
+        <button type="button" class="seg-btn active" data-mode="unmanned">無人販売</button>
+        <button type="button" class="seg-btn" data-mode="mobile">移動販売</button>
+      </div>
       <div class="form-row">
         <div class="field" style="max-width:220px;"><label for="s-date">日付</label><input id="s-date" type="date"></div>
       </div>
       <div id="s-day-notice" class="hint" style="margin:-4px 0 10px;"></div>
       <div id="s-grid"></div>
-      <button type="button" class="btn-ghost" id="s-add-extra" style="margin-top:8px;">+ 知り合いを追加</button>
+      <div class="section-label" style="margin-top:16px;">知り合いの売上</div>
+      <div id="s-friends"></div>
+      <button type="button" class="btn-ghost" id="s-add-extra" style="margin-top:6px;">+ 知り合いを追加</button>
       <div class="form-row" style="margin-top:12px;">
         <div class="field"><label for="s-note">備考</label><input id="s-note" type="text" placeholder="例: 金券500円1枚"></div>
       </div>
@@ -786,91 +802,117 @@ function sellerOptions(selectedId) {
 // ----- 入力表の組み立て -----
 // 行=項目(アクア・幸福駅・PayPay・知り合い)、列=無人販売/移動販売
 function saleLayout() {
+  const cell = (place, field, type) => ({ place, field, type: type || 'num' });
+  const rows = [];
+  if (saleMode === 'mobile') {
+    const mps = places.filter(p => p.type === 'mobile');
+    let mp = mps.find(p => p.id === saleMobilePlaceId) || mps[0];
+    if (mp) saleMobilePlaceId = mp.id;
+    if (mps.length > 1) rows.push({ label: '場所', placeSelect: mps });
+    if (mp) {
+      rows.push({ label: '催し名', cell: cell(mp.id, 'event', 'text') });
+      rows.push({ label: 'アクア', hint: '知り合いの分も含む現金', cell: cell(mp.id, 'cash') });
+      if (mp.hasPayPay !== false) rows.push({ label: 'PayPay', cell: cell(mp.id, 'paypay') });
+    }
+    return { rows, involved: mp ? [mp] : [] };
+  }
   const ups = places.filter(p => p.type !== 'mobile');
-  const mps = places.filter(p => p.type === 'mobile');
   const aquaUps = ups.filter(p => p.allowSellers !== false);
   const otherUps = ups.filter(p => p.allowSellers === false);
   const payUps = ups.filter(p => p.hasPayPay !== false);
-  const cols = [{ key: 'U', label: '無人販売' }].concat(mps.map(m => ({ key: m.id, label: mps.length > 1 ? m.name : '移動販売' })));
-  const rows = [];
-  const cell = (place, field, type) => ({ place, field, type: type || 'num' });
-  if (mps.length) {
-    const r = { label: '催し名', cells: { U: null } };
-    mps.forEach(m => { r.cells[m.id] = cell(m.id, 'event', 'text'); });
-    rows.push(r);
-  }
-  const aquaRows = aquaUps.length ? aquaUps : [null];
-  aquaRows.forEach((p, i) => {
-    const r = { label: aquaUps.length > 1 ? 'アクア(' + p.name + ')' : 'アクア', hint: '知り合いの分も含む現金', cells: { U: p ? cell(p.id, 'cash') : null } };
-    mps.forEach(m => { r.cells[m.id] = i === 0 ? cell(m.id, 'cash') : null; });
-    rows.push(r);
-  });
-  otherUps.forEach(p => {
-    const r = { label: p.name, cells: { U: cell(p.id, 'cash') } };
-    mps.forEach(m => { r.cells[m.id] = null; });
-    rows.push(r);
-  });
-  const payRows = payUps.length ? payUps : (mps.some(m => m.hasPayPay !== false) ? [null] : []);
-  payRows.forEach((p, i) => {
-    const r = { label: payUps.length > 1 ? 'PayPay(' + p.name + ')' : 'PayPay', cells: { U: p ? cell(p.id, 'paypay') : null } };
-    mps.forEach(m => { r.cells[m.id] = i === 0 && m.hasPayPay !== false ? cell(m.id, 'paypay') : null; });
-    rows.push(r);
-  });
-  // 知り合いの金額を入れる先(無人販売は知り合いの品物を置いている最初の場所)
-  const friendPlaces = { U: aquaUps[0] ? aquaUps[0].id : null };
-  mps.forEach(m => { friendPlaces[m.id] = m.allowSellers !== false ? m.id : null; });
-  return { cols, rows, friendPlaces, involved: ups.concat(mps) };
+  aquaUps.forEach(p => rows.push({ label: aquaUps.length > 1 ? 'アクア(' + p.name + ')' : 'アクア', hint: '知り合いの分も含む現金', cell: cell(p.id, 'cash') }));
+  otherUps.forEach(p => rows.push({ label: p.name, cell: cell(p.id, 'cash') }));
+  payUps.forEach(p => rows.push({ label: payUps.length > 1 ? 'PayPay(' + p.name + ')' : 'PayPay', cell: cell(p.id, 'paypay') }));
+  return { rows, involved: ups };
 }
+let saleMode = 'unmanned';
+let saleMobilePlaceId = null;
+function setSaleMode(mode) {
+  saleMode = mode;
+  document.querySelectorAll('#s-mode .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+}
+document.querySelectorAll('#s-mode .seg-btn').forEach(b => b.addEventListener('click', () => {
+  if (b.dataset.mode === saleMode) return;
+  setSaleMode(b.dataset.mode);
+  resetSaleForm(); // 日付は残して、入力欄をそのページ用にする
+}));
 
 function readSaleGrid() {
   const vals = {};
   document.querySelectorAll('#s-grid input[data-place]').forEach(el => { vals[el.dataset.place + '|' + el.dataset.field] = el.value; });
-  const friends = [...document.querySelectorAll('#s-grid tr.fr-row')].map(tr => {
-    const amounts = {};
-    tr.querySelectorAll('input[data-fplace]').forEach(el => { amounts[el.dataset.fplace] = el.value; });
-    return { sellerId: tr.querySelector('.fr-seller').value, amounts };
-  });
+  const friends = [...document.querySelectorAll('#s-friends tr.fr-row')].map(tr => ({
+    sellerId: tr.querySelector('.fr-seller').value,
+    amount: tr.querySelector('.fr-amount').value,
+    placeId: tr.querySelector('.fr-place').value,
+    note: tr.querySelector('.fr-note').value
+  }));
   return { vals, friends };
+}
+// 知り合いの売上を入れられる場所(無人販売所・移動販売)
+function friendPlaceList() {
+  const { involved } = saleLayout();
+  const list = involved.filter(p => p.allowSellers !== false);
+  return list.map(p => ({ id: p.id, label: list.length === 1 ? (p.type === 'mobile' ? '移動販売' : '無人販売') : p.name }));
+}
+function defaultFriendPlace() {
+  const l = friendPlaceList();
+  return l.length ? l[0].id : '';
+}
+function renderFriendRows(friends) {
+  const wrap = document.getElementById('s-friends');
+  if (!friends.length) { wrap.innerHTML = ''; return; }
+  const plist = friendPlaceList();
+  wrap.innerHTML = `<table class="friend-grid"><thead><tr><th>名前</th><th>金額</th><th>場所</th><th>備考</th><th class="sg-x"></th></tr></thead><tbody>${friends.map((f, i) => {
+    const placeOpts = plist.map(o => `<option value="${o.id}" ${o.id === f.placeId ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')
+      + (f.placeId && !plist.some(o => o.id === f.placeId) ? `<option value="${escapeHtml(f.placeId)}" selected>${escapeHtml(placeName(f.placeId))}</option>` : '');
+    return `<tr class="fr-row">
+      <td><select class="cell-select fr-seller">${sellerOptions(f.sellerId)}${f.sellerId && !sellerById(f.sellerId) ? `<option value="${escapeHtml(f.sellerId)}" selected>${escapeHtml(sellerName(f.sellerId))}</option>` : ''}</select></td>
+      <td><input class="cell-input num fr-amount" type="number" inputmode="numeric" step="1" placeholder="0" value="${escapeHtml(f.amount === undefined || f.amount === null ? '' : f.amount)}"></td>
+      <td><select class="cell-select fr-place">${placeOpts}</select></td>
+      <td><input class="cell-input fr-note" type="text" value="${escapeHtml(f.note || '')}"></td>
+      <td class="sg-x"><button type="button" class="btn-text-danger fr-remove" data-idx="${i}" aria-label="この行を消す">×</button></td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
+  wrap.querySelectorAll('input, select').forEach(el => el.addEventListener('input', updateSalePreview));
+  wrap.querySelectorAll('select').forEach(el => el.addEventListener('change', updateSalePreview));
+  wrap.querySelectorAll('.fr-remove').forEach(b => b.addEventListener('click', () => {
+    const st = readSaleGrid(); st.friends.splice(parseInt(b.dataset.idx, 10), 1); renderFriendRows(st.friends); updateSalePreview();
+  }));
 }
 function renderSaleGrid(state) {
   state = state || { vals: {}, friends: [] };
-  const { cols, rows, friendPlaces } = saleLayout();
+  const { rows } = saleLayout();
   const wrap = document.getElementById('s-grid');
-  if (places.length === 0) { wrap.innerHTML = '<div class="empty-state">販売場所が登録されていません</div>'; return; }
+  if (rows.length === 0) {
+    wrap.innerHTML = '<div class="empty-state">' + (saleMode === 'mobile' ? '移動販売の場所が登録されていません。マスタで「種類:移動販売」の場所を追加してください' : '販売場所が登録されていません') + '</div>';
+    renderFriendRows([]);
+    return;
+  }
   const input = c => {
     const v = state.vals[c.place + '|' + c.field];
     const val = v === undefined || v === null ? '' : v;
     return c.type === 'text'
-      ? `<input class="cell-input" type="text" data-place="${c.place}" data-field="${c.field}" value="${escapeHtml(val)}" placeholder="例: マルシェ">`
+      ? `<input class="cell-input" type="text" data-place="${c.place}" data-field="${c.field}" value="${escapeHtml(val)}" placeholder="例: あさぎりマルシェ">`
       : `<input class="cell-input num" type="number" inputmode="numeric" step="1" data-place="${c.place}" data-field="${c.field}" value="${escapeHtml(val)}" placeholder="0">`;
   };
-  const dash = '<span class="hint">―</span>';
-  let html = `<table class="sale-grid"><thead><tr><th></th>${cols.map(c => `<th>${escapeHtml(c.label)}</th>`).join('')}<th class="sg-x"></th></tr></thead><tbody>`;
+  let html = '<table class="sale-grid"><tbody>';
   rows.forEach(r => {
-    html += `<tr><td class="sg-label">${escapeHtml(r.label)}${r.hint ? `<div class="hint" style="font-weight:400;">${escapeHtml(r.hint)}</div>` : ''}</td>${cols.map(c => `<td>${r.cells[c.key] ? input(r.cells[c.key]) : dash}</td>`).join('')}<td></td></tr>`;
-  });
-  state.friends.forEach((f, i) => {
-    html += `<tr class="fr-row" data-idx="${i}"><td class="sg-label"><select class="cell-select fr-seller">${sellerOptions(f.sellerId)}${f.sellerId && !sellerById(f.sellerId) ? `<option value="${escapeHtml(f.sellerId)}" selected>${escapeHtml(sellerName(f.sellerId))}</option>` : ''}</select></td>${
-      cols.map(c => {
-        const pid = friendPlaces[c.key];
-        if (!pid) return `<td>${dash}</td>`;
-        const v = f.amounts[pid];
-        return `<td><input class="cell-input num" type="number" inputmode="numeric" step="1" data-fplace="${pid}" value="${escapeHtml(v === undefined || v === null ? '' : v)}" placeholder="0"></td>`;
-      }).join('')
-    }<td class="sg-x"><button type="button" class="btn-text-danger fr-remove" data-idx="${i}" aria-label="この行を消す">×</button></td></tr>`;
+    const right = r.placeSelect
+      ? `<select class="cell-select" id="s-mplace">${r.placeSelect.map(p => `<option value="${p.id}" ${p.id === saleMobilePlaceId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}</select>`
+      : input(r.cell);
+    html += `<tr><td class="sg-label">${escapeHtml(r.label)}${r.hint ? `<div class="hint" style="font-weight:400;">${escapeHtml(r.hint)}</div>` : ''}</td><td class="sg-input">${right}</td></tr>`;
   });
   html += '</tbody></table>';
-  if (sellers.length === 0 && state.friends.length === 0) html += '';
   wrap.innerHTML = html;
-  wrap.querySelectorAll('input, select').forEach(el => el.addEventListener('input', updateSalePreview));
-  wrap.querySelectorAll('.fr-remove').forEach(b => b.addEventListener('click', () => {
-    const st = readSaleGrid(); st.friends.splice(parseInt(b.dataset.idx, 10), 1); renderSaleGrid(st); updateSalePreview();
-  }));
+  wrap.querySelectorAll('input').forEach(el => el.addEventListener('input', updateSalePreview));
+  const mpSel = document.getElementById('s-mplace');
+  if (mpSel) mpSel.addEventListener('change', () => { saleMobilePlaceId = mpSel.value; renderSaleGrid({ vals: readSaleGrid().vals, friends: [] }); updateSalePreview(); updateDayNotice(); });
+  renderFriendRows(state.friends);
 }
 document.getElementById('s-add-extra').addEventListener('click', () => {
   if (sellers.length === 0) { showToast('マスタで知り合い(出品者)を先に登録してください'); return; }
-  const st = readSaleGrid(); st.friends.push({ sellerId: '', amounts: {} }); renderSaleGrid(st);
-  const sels = document.querySelectorAll('#s-grid .fr-seller');
+  const st = readSaleGrid(); st.friends.push({ sellerId: '', amount: '', placeId: defaultFriendPlace(), note: '' }); renderFriendRows(st.friends);
+  const sels = document.querySelectorAll('#s-friends .fr-seller');
   if (sels.length) sels[sels.length - 1].focus();
 });
 
@@ -885,34 +927,32 @@ function collectSaleRecords() {
     byPlace[p.id] = { placeId: p.id, cash: get('cash'), paypay: get('paypay'), eventName: (vals[p.id + '|event'] || '').trim(), extras: [] };
   });
   friends.forEach(f => {
-    Object.keys(f.amounts).forEach(pid => {
-      const s = String(f.amounts[pid]).trim();
-      if (s === '' || toNum(s) === 0) return;
-      if (!f.sellerId) { missingSeller = true; return; }
-      if (byPlace[pid]) byPlace[pid].extras.push({ sellerId: f.sellerId, amount: toNum(s), note: '' });
-    });
+    const s = String(f.amount).trim();
+    if (s === '' || toNum(s) === 0) return;
+    if (!f.sellerId) { missingSeller = true; return; }
+    if (!byPlace[f.placeId]) byPlace[f.placeId] = { placeId: f.placeId, cash: null, paypay: null, eventName: '', extras: [] };
+    byPlace[f.placeId].extras.push({ sellerId: f.sellerId, amount: toNum(s), note: f.note.trim() });
   });
   const list = Object.values(byPlace).map(r => Object.assign(r, { hasValue: r.cash !== null || r.paypay !== null || r.extras.length > 0 }));
   return { list, missingSeller };
 }
 function updateSalePreview() {
   const { list } = collectSaleRecords();
-  let total = 0, friends = 0, mobileTotal = 0;
+  let total = 0, friends = 0;
   list.forEach(r => {
-    const t = toNum(r.cash) + toNum(r.paypay);
-    total += t;
-    if (isMobile(r.placeId)) mobileTotal += t;
+    total += toNum(r.cash) + toNum(r.paypay);
     friends += r.extras.reduce((a, x) => a + x.amount, 0);
   });
   document.getElementById('s-total-preview').innerHTML = total || friends
-    ? '合計 ' + yen(total) + (mobileTotal ? '<span class="hint">(うち移動販売 ' + yen(mobileTotal) + ')</span>' : '') + '　<span style="color:var(--gold)">知り合い ' + yen(friends) + '</span>　<span style="color:var(--accent)">アクア ' + yen(total - friends) + '</span>'
+    ? '合計 ' + yen(total) + '　<span style="color:var(--gold)">知り合い ' + yen(friends) + '</span>　<span style="color:var(--accent)">アクア ' + yen(total - friends) + '</span>'
     : '';
 }
 function updateDayNotice() {
   const date = document.getElementById('s-date').value;
   const el = document.getElementById('s-day-notice');
-  if (editingDate || !date || !sales.some(s => s.date === date)) { el.innerHTML = ''; return; }
-  el.innerHTML = 'この日はすでに記録があります。<button type="button" class="btn-text" id="s-open-day">この日の記録を開いて直す</button>';
+  const ids = saleLayout().involved.map(p => p.id);
+  if (editingDate || !date || !sales.some(s => s.date === date && ids.indexOf(s.placeId) !== -1)) { el.innerHTML = ''; return; }
+  el.innerHTML = 'この日は' + (saleMode === 'mobile' ? '移動販売の' : '') + '記録がすでにあります。<button type="button" class="btn-text" id="s-open-day">この日の記録を開いて直す</button>';
   document.getElementById('s-open-day').addEventListener('click', () => editDay(date));
 }
 function renderSaleForm() {
@@ -939,42 +979,43 @@ document.getElementById('s-cancel').addEventListener('click', resetSaleForm);
 // その日の記録(場所ごとに1件目)をまとめて開く
 function firstRecordsOfDay(date) {
   const map = {};
-  sales.filter(s => s.date === date).sort(recOrder).forEach(s => { if (!map[s.placeId]) map[s.placeId] = s; });
+  const ids = saleLayout().involved.map(p => p.id);
+  sales.filter(s => s.date === date && ids.indexOf(s.placeId) !== -1).sort(recOrder).forEach(s => { if (!map[s.placeId]) map[s.placeId] = s; });
   return map;
 }
 function editDay(date) {
   goTab('input');
   editingDate = date;
-  document.getElementById('s-heading').textContent = fmtMD(date) + 'の売上を編集';
+  document.getElementById('s-heading').textContent = fmtMD(date) + 'の' + (saleMode === 'mobile' ? '移動販売' : '無人販売') + 'を編集';
   document.getElementById('s-submit').textContent = '更新する';
   document.getElementById('s-cancel').style.display = 'inline-block';
   document.getElementById('s-date').value = date;
   document.getElementById('s-date').disabled = true;
   const recs = firstRecordsOfDay(date);
-  const vals = {}, friendMap = {};
+  const vals = {}, friends = [];
   let note = '';
   Object.values(recs).forEach(s => {
     if (s.cash !== null && s.cash !== undefined) vals[s.placeId + '|cash'] = s.cash;
     if (s.paypay !== null && s.paypay !== undefined) vals[s.placeId + '|paypay'] = s.paypay;
     if (s.eventName) vals[s.placeId + '|event'] = s.eventName;
     if (s.note && !note) note = s.note;
-    (s.extras || []).forEach(x => {
-      if (!friendMap[x.sellerId]) friendMap[x.sellerId] = { sellerId: x.sellerId, amounts: {} };
-      friendMap[x.sellerId].amounts[s.placeId] = toNum(friendMap[x.sellerId].amounts[s.placeId]) + toNum(x.amount);
-    });
+    (s.extras || []).forEach(x => friends.push({ sellerId: x.sellerId, amount: x.amount, placeId: s.placeId, note: x.note || '' }));
   });
   document.getElementById('s-note').value = note;
-  const friends = Object.values(friendMap).sort((a, b) => sellerOrder(a.sellerId) - sellerOrder(b.sellerId));
   renderSaleGrid({ vals, friends });
   updateSalePreview();
   updateDayNotice();
-  const extra = sales.filter(s => s.date === date).length - Object.keys(recs).length;
+  const ids = saleLayout().involved.map(p => p.id);
+  const extra = sales.filter(s => s.date === date && ids.indexOf(s.placeId) !== -1).length - Object.keys(recs).length;
   if (extra > 0) showToast('この日は同じ場所の記録が複数あります。2件目以降は「日別一覧」から直してください');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function editSale(id) {
   const s = sales.find(x => x.id === id);
-  if (s) editDay(s.date);
+  if (!s) return;
+  setSaleMode(isMobile(s.placeId) ? 'mobile' : 'unmanned');
+  if (isMobile(s.placeId)) saleMobilePlaceId = s.placeId;
+  editDay(s.date);
 }
 
 document.getElementById('s-submit').addEventListener('click', async () => {
