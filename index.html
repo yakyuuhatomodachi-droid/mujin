@@ -89,6 +89,14 @@
   .row-actions { white-space: nowrap; text-align: right; }
   .nowrap-table th, .nowrap-table td { white-space: nowrap; }
   .stock-table .cell-input { width: 90px; min-width: 0; }
+  .sale-grid { width: 100%; max-width: 640px; table-layout: fixed; border-collapse: collapse; }
+  .sale-grid th { font-size: 12px; padding: 4px 6px 6px 0; border-bottom: none; text-align: left; }
+  .sale-grid td { padding: 4px 6px 4px 0; border-bottom: none; vertical-align: middle; }
+  .sale-grid th:first-child, .sale-grid td.sg-label { width: 30%; }
+  .sale-grid td.sg-label { font-weight: 700; font-size: 14px; }
+  .sale-grid .sg-x { width: 32px; padding-right: 0; }
+  .sale-grid .cell-input, .sale-grid .cell-select { width: 100%; min-width: 0; }
+  .sale-grid .fr-seller { font-size: 14px; padding: 6px 4px; }
   .ex-table { width: 100%; max-width: 560px; table-layout: fixed; }
   .ex-table td { padding: 4px 6px 4px 0; border-bottom: none; }
   .ex-table td:nth-child(1) { width: 28%; font-weight: 500; white-space: normal; }
@@ -205,23 +213,16 @@
     <div class="card">
       <h2 id="s-heading">売上を記録</h2>
       <div class="form-row">
-        <div class="field"><label for="s-date">日付</label><input id="s-date" type="date"></div>
-        <div class="field"><label for="s-place">販売場所</label><select id="s-place"></select></div>
-        <div class="field" id="s-event-field" style="display:none;"><label for="s-event">催し名</label><input id="s-event" type="text" placeholder="例: あさぎりマルシェ"></div>
+        <div class="field" style="max-width:220px;"><label for="s-date">日付</label><input id="s-date" type="date"></div>
       </div>
-      <div class="form-row">
-        <div class="field"><label for="s-cash">現金(知り合いの分も含めた合計・報告の「アクア」)</label><input id="s-cash" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
-        <div class="field" id="s-paypay-field"><label for="s-paypay">PayPay(円)</label><input id="s-paypay" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
-      </div>
-      <div id="s-extras-wrap">
-        <div class="section-label">知り合いの売上(金額)</div>
-        <div id="s-extras"></div>
-      </div>
+      <div id="s-day-notice" class="hint" style="margin:-4px 0 10px;"></div>
+      <div id="s-grid"></div>
+      <button type="button" class="btn-ghost" id="s-add-extra" style="margin-top:8px;">+ 知り合いを追加</button>
       <div class="form-row" style="margin-top:12px;">
         <div class="field"><label for="s-note">備考</label><input id="s-note" type="text" placeholder="例: 金券500円1枚"></div>
       </div>
       <div class="total-preview" id="s-total-preview"></div>
-      <div class="error-text" id="s-error">日付と販売場所を選び、金額を入力してください</div>
+      <div class="error-text" id="s-error">日付を選び、金額を入力してください</div>
       <div class="btn-row">
         <button class="btn btn-primary" id="s-submit">記録する</button>
         <button class="btn-ghost" id="s-cancel" style="display:none;">編集をやめる</button>
@@ -772,7 +773,7 @@ function renderAll() {
 function goTab(tab) { document.querySelector('.tab-btn[data-tab="' + tab + '"]').click(); }
 
 // ===== 売上入力 =====
-let editingSaleId = null;
+let editingDate = null; // 日付ごとに編集する
 
 function placeOptions(selectedId, filterFn) {
   const list = places.filter(p => !p.hidden || p.id === selectedId).filter(filterFn || (() => true));
@@ -782,139 +783,248 @@ function sellerOptions(selectedId) {
   return '<option value="">選んでください</option>' + sellers.map(s => `<option value="${s.id}" ${s.id === selectedId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
 }
 
-// 知り合いの金額欄:出品者全員分を最初から並べる
-function readExtraValues() {
-  const v = {};
-  document.querySelectorAll('#s-extras .ex-row').forEach(r => {
-    v[r.dataset.seller] = { amount: r.querySelector('.ex-amount').value, note: r.querySelector('.ex-note').value };
+// ----- 入力表の組み立て -----
+// 行=項目(アクア・幸福駅・PayPay・知り合い)、列=無人販売/移動販売
+function saleLayout() {
+  const ups = places.filter(p => p.type !== 'mobile');
+  const mps = places.filter(p => p.type === 'mobile');
+  const aquaUps = ups.filter(p => p.allowSellers !== false);
+  const otherUps = ups.filter(p => p.allowSellers === false);
+  const payUps = ups.filter(p => p.hasPayPay !== false);
+  const cols = [{ key: 'U', label: '無人販売' }].concat(mps.map(m => ({ key: m.id, label: mps.length > 1 ? m.name : '移動販売' })));
+  const rows = [];
+  const cell = (place, field, type) => ({ place, field, type: type || 'num' });
+  if (mps.length) {
+    const r = { label: '催し名', cells: { U: null } };
+    mps.forEach(m => { r.cells[m.id] = cell(m.id, 'event', 'text'); });
+    rows.push(r);
+  }
+  const aquaRows = aquaUps.length ? aquaUps : [null];
+  aquaRows.forEach((p, i) => {
+    const r = { label: aquaUps.length > 1 ? 'アクア(' + p.name + ')' : 'アクア', hint: '知り合いの分も含む現金', cells: { U: p ? cell(p.id, 'cash') : null } };
+    mps.forEach(m => { r.cells[m.id] = i === 0 ? cell(m.id, 'cash') : null; });
+    rows.push(r);
   });
-  return v;
-}
-function renderExtras(values) {
-  values = values || {};
-  const wrap = document.getElementById('s-extras');
-  const ids = sellers.map(s => s.id);
-  Object.keys(values).forEach(id => { if (ids.indexOf(id) === -1) ids.push(id); });
-  if (ids.length === 0) { wrap.innerHTML = '<div class="hint">知り合い(出品者)が登録されていません。マスタで追加できます</div>'; return; }
-  wrap.innerHTML = `<table class="nowrap-table ex-table"><tbody>${ids.map(id => {
-    const v = values[id] || {};
-    return `<tr class="ex-row" data-seller="${escapeHtml(id)}">
-      <td class="ex-name">${escapeHtml(sellerName(id))}</td>
-      <td><input class="cell-input ex-amount num" type="number" inputmode="numeric" step="1" placeholder="0" value="${escapeHtml(v.amount === undefined || v.amount === null ? '' : v.amount)}"></td>
-      <td><input class="cell-input ex-note" type="text" placeholder="メモ" value="${escapeHtml(v.note || '')}"></td>
-    </tr>`;
-  }).join('')}</tbody></table>`;
-  wrap.querySelectorAll('input').forEach(el => el.addEventListener('input', updateSalePreview));
-}
-function collectExtras() {
-  const v = readExtraValues();
-  return Object.keys(v).filter(id => String(v[id].amount).trim() !== '' && toNum(v[id].amount) !== 0)
-    .map(id => ({ sellerId: id, amount: toNum(v[id].amount), note: v[id].note.trim() }));
+  otherUps.forEach(p => {
+    const r = { label: p.name, cells: { U: cell(p.id, 'cash') } };
+    mps.forEach(m => { r.cells[m.id] = null; });
+    rows.push(r);
+  });
+  const payRows = payUps.length ? payUps : (mps.some(m => m.hasPayPay !== false) ? [null] : []);
+  payRows.forEach((p, i) => {
+    const r = { label: payUps.length > 1 ? 'PayPay(' + p.name + ')' : 'PayPay', cells: { U: p ? cell(p.id, 'paypay') : null } };
+    mps.forEach(m => { r.cells[m.id] = i === 0 && m.hasPayPay !== false ? cell(m.id, 'paypay') : null; });
+    rows.push(r);
+  });
+  // 知り合いの金額を入れる先(無人販売は知り合いの品物を置いている最初の場所)
+  const friendPlaces = { U: aquaUps[0] ? aquaUps[0].id : null };
+  mps.forEach(m => { friendPlaces[m.id] = m.allowSellers !== false ? m.id : null; });
+  return { cols, rows, friendPlaces, involved: ups.concat(mps) };
 }
 
-function applySalePlaceVisibility() {
-  const p = placeById(document.getElementById('s-place').value);
-  document.getElementById('s-event-field').style.display = p && p.type === 'mobile' ? 'flex' : 'none';
-  document.getElementById('s-paypay-field').style.display = p && p.hasPayPay === false ? 'none' : 'flex';
-  document.getElementById('s-extras-wrap').style.display = p && p.allowSellers === false ? 'none' : 'block';
+function readSaleGrid() {
+  const vals = {};
+  document.querySelectorAll('#s-grid input[data-place]').forEach(el => { vals[el.dataset.place + '|' + el.dataset.field] = el.value; });
+  const friends = [...document.querySelectorAll('#s-grid tr.fr-row')].map(tr => {
+    const amounts = {};
+    tr.querySelectorAll('input[data-fplace]').forEach(el => { amounts[el.dataset.fplace] = el.value; });
+    return { sellerId: tr.querySelector('.fr-seller').value, amounts };
+  });
+  return { vals, friends };
+}
+function renderSaleGrid(state) {
+  state = state || { vals: {}, friends: [] };
+  const { cols, rows, friendPlaces } = saleLayout();
+  const wrap = document.getElementById('s-grid');
+  if (places.length === 0) { wrap.innerHTML = '<div class="empty-state">販売場所が登録されていません</div>'; return; }
+  const input = c => {
+    const v = state.vals[c.place + '|' + c.field];
+    const val = v === undefined || v === null ? '' : v;
+    return c.type === 'text'
+      ? `<input class="cell-input" type="text" data-place="${c.place}" data-field="${c.field}" value="${escapeHtml(val)}" placeholder="例: マルシェ">`
+      : `<input class="cell-input num" type="number" inputmode="numeric" step="1" data-place="${c.place}" data-field="${c.field}" value="${escapeHtml(val)}" placeholder="0">`;
+  };
+  const dash = '<span class="hint">―</span>';
+  let html = `<table class="sale-grid"><thead><tr><th></th>${cols.map(c => `<th>${escapeHtml(c.label)}</th>`).join('')}<th class="sg-x"></th></tr></thead><tbody>`;
+  rows.forEach(r => {
+    html += `<tr><td class="sg-label">${escapeHtml(r.label)}${r.hint ? `<div class="hint" style="font-weight:400;">${escapeHtml(r.hint)}</div>` : ''}</td>${cols.map(c => `<td>${r.cells[c.key] ? input(r.cells[c.key]) : dash}</td>`).join('')}<td></td></tr>`;
+  });
+  state.friends.forEach((f, i) => {
+    html += `<tr class="fr-row" data-idx="${i}"><td class="sg-label"><select class="cell-select fr-seller">${sellerOptions(f.sellerId)}${f.sellerId && !sellerById(f.sellerId) ? `<option value="${escapeHtml(f.sellerId)}" selected>${escapeHtml(sellerName(f.sellerId))}</option>` : ''}</select></td>${
+      cols.map(c => {
+        const pid = friendPlaces[c.key];
+        if (!pid) return `<td>${dash}</td>`;
+        const v = f.amounts[pid];
+        return `<td><input class="cell-input num" type="number" inputmode="numeric" step="1" data-fplace="${pid}" value="${escapeHtml(v === undefined || v === null ? '' : v)}" placeholder="0"></td>`;
+      }).join('')
+    }<td class="sg-x"><button type="button" class="btn-text-danger fr-remove" data-idx="${i}" aria-label="この行を消す">×</button></td></tr>`;
+  });
+  html += '</tbody></table>';
+  if (sellers.length === 0 && state.friends.length === 0) html += '';
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('input, select').forEach(el => el.addEventListener('input', updateSalePreview));
+  wrap.querySelectorAll('.fr-remove').forEach(b => b.addEventListener('click', () => {
+    const st = readSaleGrid(); st.friends.splice(parseInt(b.dataset.idx, 10), 1); renderSaleGrid(st); updateSalePreview();
+  }));
+}
+document.getElementById('s-add-extra').addEventListener('click', () => {
+  if (sellers.length === 0) { showToast('マスタで知り合い(出品者)を先に登録してください'); return; }
+  const st = readSaleGrid(); st.friends.push({ sellerId: '', amounts: {} }); renderSaleGrid(st);
+  const sels = document.querySelectorAll('#s-grid .fr-seller');
+  if (sels.length) sels[sels.length - 1].focus();
+});
+
+// 入力内容を場所ごとの記録にまとめる
+function collectSaleRecords() {
+  const { vals, friends } = readSaleGrid();
+  const { involved } = saleLayout();
+  const byPlace = {};
+  let missingSeller = false;
+  involved.forEach(p => {
+    const get = f => { const v = vals[p.id + '|' + f]; return v === undefined || String(v).trim() === '' ? null : toNum(v); };
+    byPlace[p.id] = { placeId: p.id, cash: get('cash'), paypay: get('paypay'), eventName: (vals[p.id + '|event'] || '').trim(), extras: [] };
+  });
+  friends.forEach(f => {
+    Object.keys(f.amounts).forEach(pid => {
+      const s = String(f.amounts[pid]).trim();
+      if (s === '' || toNum(s) === 0) return;
+      if (!f.sellerId) { missingSeller = true; return; }
+      if (byPlace[pid]) byPlace[pid].extras.push({ sellerId: f.sellerId, amount: toNum(s), note: '' });
+    });
+  });
+  const list = Object.values(byPlace).map(r => Object.assign(r, { hasValue: r.cash !== null || r.paypay !== null || r.extras.length > 0 }));
+  return { list, missingSeller };
 }
 function updateSalePreview() {
-  const p = placeById(document.getElementById('s-place').value);
-  const cash = toNum(document.getElementById('s-cash').value);
-  const paypay = p && p.hasPayPay === false ? 0 : toNum(document.getElementById('s-paypay').value);
-  const friends = p && p.allowSellers === false ? 0 : collectExtras().reduce((a, x) => a + x.amount, 0);
-  const total = cash + paypay;
+  const { list } = collectSaleRecords();
+  let total = 0, friends = 0, mobileTotal = 0;
+  list.forEach(r => {
+    const t = toNum(r.cash) + toNum(r.paypay);
+    total += t;
+    if (isMobile(r.placeId)) mobileTotal += t;
+    friends += r.extras.reduce((a, x) => a + x.amount, 0);
+  });
   document.getElementById('s-total-preview').innerHTML = total || friends
-    ? '合計 ' + yen(total) + '　<span style="color:var(--gold)">知り合い ' + yen(friends) + '</span>　<span style="color:var(--accent)">アクア ' + yen(total - friends) + '</span>'
+    ? '合計 ' + yen(total) + (mobileTotal ? '<span class="hint">(うち移動販売 ' + yen(mobileTotal) + ')</span>' : '') + '　<span style="color:var(--gold)">知り合い ' + yen(friends) + '</span>　<span style="color:var(--accent)">アクア ' + yen(total - friends) + '</span>'
     : '';
 }
-function renderSaleForm() {
-  const sel = document.getElementById('s-place');
-  const prev = sel.value;
-  sel.innerHTML = placeOptions(prev);
-  if (prev && placeById(prev)) sel.value = prev;
-  if (!document.getElementById('s-date').value) document.getElementById('s-date').value = todayStr();
-  renderExtras(readExtraValues()); // 出品者の追加・名前変更を反映(入力中の値は残す)
-  applySalePlaceVisibility();
-  updateSalePreview();
+function updateDayNotice() {
+  const date = document.getElementById('s-date').value;
+  const el = document.getElementById('s-day-notice');
+  if (editingDate || !date || !sales.some(s => s.date === date)) { el.innerHTML = ''; return; }
+  el.innerHTML = 'この日はすでに記録があります。<button type="button" class="btn-text" id="s-open-day">この日の記録を開いて直す</button>';
+  document.getElementById('s-open-day').addEventListener('click', () => editDay(date));
 }
-// 記録後は日付と場所を残し、金額だけ空にする
+function renderSaleForm() {
+  if (!document.getElementById('s-date').value) document.getElementById('s-date').value = todayStr();
+  renderSaleGrid(readSaleGrid()); // 入力中の値は残す
+  updateSalePreview();
+  updateDayNotice();
+}
+// 記録後は日付を残し、金額だけ空にする
 function resetSaleForm() {
-  editingSaleId = null;
+  editingDate = null;
   document.getElementById('s-heading').textContent = '売上を記録';
   document.getElementById('s-submit').textContent = '記録する';
   document.getElementById('s-cancel').style.display = 'none';
-  ['s-cash', 's-paypay', 's-event', 's-note'].forEach(id => { document.getElementById(id).value = ''; });
-  renderExtras({});
+  document.getElementById('s-date').disabled = false;
+  document.getElementById('s-note').value = '';
+  renderSaleGrid({ vals: {}, friends: [] });
   updateSalePreview();
+  updateDayNotice();
 }
-document.getElementById('s-place').addEventListener('change', () => { applySalePlaceVisibility(); updateSalePreview(); });
-['s-cash', 's-paypay'].forEach(id => document.getElementById(id).addEventListener('input', updateSalePreview));
+document.getElementById('s-date').addEventListener('change', updateDayNotice);
 document.getElementById('s-cancel').addEventListener('click', resetSaleForm);
 
-function editSale(id) {
-  const s = sales.find(x => x.id === id);
-  if (!s) return;
+// その日の記録(場所ごとに1件目)をまとめて開く
+function firstRecordsOfDay(date) {
+  const map = {};
+  sales.filter(s => s.date === date).sort(recOrder).forEach(s => { if (!map[s.placeId]) map[s.placeId] = s; });
+  return map;
+}
+function editDay(date) {
   goTab('input');
-  editingSaleId = id;
-  document.getElementById('s-heading').textContent = '売上を編集';
+  editingDate = date;
+  document.getElementById('s-heading').textContent = fmtMD(date) + 'の売上を編集';
   document.getElementById('s-submit').textContent = '更新する';
   document.getElementById('s-cancel').style.display = 'inline-block';
-  document.getElementById('s-date').value = s.date;
-  document.getElementById('s-place').innerHTML = placeOptions(s.placeId);
-  document.getElementById('s-place').value = s.placeId;
-  document.getElementById('s-event').value = s.eventName || '';
-  document.getElementById('s-cash').value = s.cash === null || s.cash === undefined ? '' : s.cash;
-  document.getElementById('s-paypay').value = s.paypay === null || s.paypay === undefined ? '' : s.paypay;
-  document.getElementById('s-note').value = s.note || '';
-  const vals = {};
-  (s.extras || []).forEach(x => {
-    if (!vals[x.sellerId]) vals[x.sellerId] = { amount: 0, note: '' };
-    vals[x.sellerId].amount += toNum(x.amount);
-    if (x.note) vals[x.sellerId].note = vals[x.sellerId].note ? vals[x.sellerId].note + '、' + x.note : x.note;
+  document.getElementById('s-date').value = date;
+  document.getElementById('s-date').disabled = true;
+  const recs = firstRecordsOfDay(date);
+  const vals = {}, friendMap = {};
+  let note = '';
+  Object.values(recs).forEach(s => {
+    if (s.cash !== null && s.cash !== undefined) vals[s.placeId + '|cash'] = s.cash;
+    if (s.paypay !== null && s.paypay !== undefined) vals[s.placeId + '|paypay'] = s.paypay;
+    if (s.eventName) vals[s.placeId + '|event'] = s.eventName;
+    if (s.note && !note) note = s.note;
+    (s.extras || []).forEach(x => {
+      if (!friendMap[x.sellerId]) friendMap[x.sellerId] = { sellerId: x.sellerId, amounts: {} };
+      friendMap[x.sellerId].amounts[s.placeId] = toNum(friendMap[x.sellerId].amounts[s.placeId]) + toNum(x.amount);
+    });
   });
-  renderExtras(vals);
-  applySalePlaceVisibility();
+  document.getElementById('s-note').value = note;
+  const friends = Object.values(friendMap).sort((a, b) => sellerOrder(a.sellerId) - sellerOrder(b.sellerId));
+  renderSaleGrid({ vals, friends });
   updateSalePreview();
+  updateDayNotice();
+  const extra = sales.filter(s => s.date === date).length - Object.keys(recs).length;
+  if (extra > 0) showToast('この日は同じ場所の記録が複数あります。2件目以降は「日別一覧」から直してください');
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function editSale(id) {
+  const s = sales.find(x => x.id === id);
+  if (s) editDay(s.date);
 }
 
 document.getElementById('s-submit').addEventListener('click', async () => {
   const date = document.getElementById('s-date').value;
-  const placeId = document.getElementById('s-place').value;
-  const p = placeById(placeId);
-  const cash = inputNum(document.getElementById('s-cash'));
-  const paypay = p && p.hasPayPay === false ? null : inputNum(document.getElementById('s-paypay'));
-  const extras = p && p.allowSellers === false ? [] : collectExtras();
+  const { list, missingSeller } = collectSaleRecords();
   const errorEl = document.getElementById('s-error');
-  if (!date || !p || (cash === null && paypay === null && extras.length === 0)) { errorEl.classList.add('show'); return; }
+  if (missingSeller) { errorEl.textContent = '知り合いの行で、名前を選んでいない行があります'; errorEl.classList.add('show'); return; }
+  const filled = list.filter(r => r.hasValue);
+  if (!date || (!editingDate && filled.length === 0)) { errorEl.textContent = '日付を選び、金額を入力してください'; errorEl.classList.add('show'); return; }
   errorEl.classList.remove('show');
+  const note = document.getElementById('s-note').value.trim();
 
-  if (!editingSaleId && p.type !== 'mobile' && sales.some(s => s.date === date && s.placeId === placeId)) {
-    const go = await showConfirm(fmtMD(date) + 'の「' + p.name + '」はすでに記録があります。\nもう1件追加しますか？(金額は合算されます)', '追加する');
-    if (!go) return;
+  if (!editingDate) {
+    const dup = filled.filter(r => !isMobile(r.placeId) && sales.some(s => s.date === date && s.placeId === r.placeId));
+    if (dup.length) {
+      const go = await showConfirm(fmtMD(date) + 'の「' + dup.map(r => placeName(r.placeId)).join('・') + '」はすでに記録があります。\nもう1件追加しますか？(金額は合算されます)\n直したい場合は「キャンセル」を押し、「この日の記録を開いて直す」から修正してください', '追加する');
+      if (!go) return;
+    }
   }
   const btn = document.getElementById('s-submit');
   btn.disabled = true;
-  let rec;
-  const fields = { date, placeId, eventName: p.type === 'mobile' ? document.getElementById('s-event').value.trim() : '', cash, paypay, extras, note: document.getElementById('s-note').value.trim() };
-  if (editingSaleId) {
-    rec = sales.find(x => x.id === editingSaleId);
-    Object.assign(rec, fields, { updatedAt: Date.now() });
-  } else {
-    rec = Object.assign({ id: uid(), createdAt: Date.now() }, fields);
-    sales.push(rec);
-  }
-  const wasEditing = !!editingSaleId;
-  const ok = await saveRecord('sale', rec);
+  const existing = editingDate ? firstRecordsOfDay(date) : {};
+  // 備考はアクアの記録(なければ最初の記録)に付ける
+  const noteTarget = (filled.find(r => r.extras.length || (!isMobile(r.placeId) && placeById(r.placeId) && placeById(r.placeId).allowSellers !== false)) || filled[0] || {}).placeId;
+  const toSave = [], toDelete = [];
+  list.forEach(r => {
+    const old = existing[r.placeId];
+    const fields = { date, placeId: r.placeId, eventName: isMobile(r.placeId) ? r.eventName : '', cash: r.cash, paypay: r.paypay, extras: r.extras };
+    if (r.placeId === noteTarget) fields.note = note;
+    else if (!old) fields.note = '';
+    if (r.hasValue) {
+      if (old) { Object.assign(old, fields, { updatedAt: Date.now() }); toSave.push(old); }
+      else { const rec = Object.assign({ id: uid(), createdAt: Date.now() }, fields); sales.push(rec); toSave.push(rec); }
+    } else if (old) {
+      toDelete.push(old);
+    }
+  });
+  sales = sales.filter(s => toDelete.indexOf(s) === -1);
+  let ok = true;
+  for (const rec of toSave) { if (!(await saveRecord('sale', rec))) ok = false; }
+  for (const rec of toDelete) { if (!(await deleteRecord('sale', rec.id))) ok = false; }
   btn.disabled = false;
+  const wasEditing = !!editingDate;
   if (ok) {
-    const friends = extras.reduce((a, x) => a + x.amount, 0);
-    showSaveModal((wasEditing ? '更新しました:' : '記録しました:') + fmtMD(date) + '「' + p.name + '」合計 ' + yen(toNum(cash) + toNum(paypay)) + (friends ? '(知り合い ' + yen(friends) + ')' : ''), true);
+    const total = toSave.reduce((a, r) => a + toNum(r.cash) + toNum(r.paypay), 0);
+    const friends = toSave.reduce((a, r) => a + r.extras.reduce((b, x) => b + x.amount, 0), 0);
+    showSaveModal((wasEditing ? '更新しました:' : '記録しました:') + fmtMD(date) + ' 合計 ' + yen(total) + (friends ? '(知り合い ' + yen(friends) + ')' : ''), true);
     resetSaleForm();
-    document.getElementById('s-cash').focus();
   } else {
-    showSaveModal('保存に失敗しました。通信状況を確認して、もう一度「記録する」を押してください', false);
+    showSaveModal('保存できなかった項目があります。通信状況を確認して、「最新に更新」を押してから内容を確かめてください', false);
   }
   renderRecentSales();
 });
@@ -941,7 +1051,7 @@ async function deleteSale(id) {
   if (!s) return false;
   if (!(await showConfirm(fmtMD(s.date) + '「' + placeName(s.placeId) + '」の売上記録(' + yen(toNum(s.cash) + toNum(s.paypay)) + ')を削除しますか？'))) return false;
   sales = sales.filter(x => x.id !== id);
-  if (editingSaleId === id) resetSaleForm();
+  if (editingDate === s.date) resetSaleForm();
   renderTab(activeTab());
   const ok = await deleteRecord('sale', id);
   if (ok) showToast('削除しました');
