@@ -8,15 +8,15 @@
   @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
 
   :root {
-    --bg: #F2F1E7;
+    --bg: #EDF1F6;
     --surface: #FFFFFF;
-    --border: #DBD7C6;
-    --text-primary: #24291F;
-    --text-secondary: #6E6C5E;
-    --accent: #33513F;
-    --accent-light: #E7EDE6;
-    --gold: #B08A2E;
-    --gold-light: #F3E9D2;
+    --border: #D0D9E4;
+    --text-primary: #1E2833;
+    --text-secondary: #5A6676;
+    --accent: #2B5683;
+    --accent-light: #E2EBF5;
+    --gold: #A8741A;
+    --gold-light: #F6EBD7;
     --danger: #A9432E;
     --danger-light: #F5E4DF;
     --radius: 10px;
@@ -29,6 +29,7 @@
     color: var(--text-primary);
     line-height: 1.6;
   }
+  body { border-top: 6px solid var(--accent); }
   .app { max-width: 1400px; margin: 0 auto; padding: 24px 24px 60px; }
   .app-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
   .app-header h1 { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
@@ -66,7 +67,7 @@
   .btn { font-family: inherit; font-size: 14px; font-weight: 500; padding: 9px 16px; border-radius: 6px; border: none; cursor: pointer; }
   .btn:disabled { opacity: 0.5; cursor: default; }
   .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover:not(:disabled) { background: #294032; }
+  .btn-primary:hover:not(:disabled) { background: #22466C; }
   .btn-ghost { font-family: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px; background: none; border: 1px solid var(--border); color: var(--text-primary); cursor: pointer; }
   .btn-ghost:hover:not(:disabled) { border-color: var(--text-secondary); }
   .btn-ghost:disabled { opacity: 0.3; cursor: default; }
@@ -129,7 +130,7 @@
   .fixed-table tr.row-total td { font-weight: 700; background: var(--bg); }
   .fixed-table td.neg { color: var(--danger); }
   .fixed-table td.sun { color: var(--danger); }
-  .fixed-table td.sat { color: #3B62B5; }
+  .fixed-table td.sat { color: #2F6FD0; }
   .fixed-table td.closed-cell { text-align: center; letter-spacing: 1em; color: var(--text-secondary); background: var(--bg); font-weight: 500; }
   .fixed-table tr.clickable { cursor: pointer; }
   .fixed-table td[data-edit] { cursor: text; }
@@ -137,13 +138,13 @@
   .fixed-table td .cell-edit { width: 100%; font-family: inherit; font-size: 13px; padding: 3px 4px; border: 1px solid var(--accent); border-radius: 4px; background: #fff; }
   .fixed-table tr.clickable:hover td { background: var(--accent-light); }
 
-  :root { --c1: #3A8A5C; --c2: #5B7FD6; }
+  :root { --c1: #5B7FD6; --c2: #3A8A5C; }
   .chart-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
   .chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
   .chart svg { width: 100%; height: auto; display: block; }
   .chart .grid { stroke: var(--border); stroke-width: 1; }
   .chart .axis-label { font-size: 11px; fill: var(--text-secondary); }
-  .chart .band:hover { fill: rgba(36, 41, 31, 0.05); }
+  .chart .band:hover { fill: rgba(30, 40, 51, 0.05); }
   .chart-tip { position: fixed; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 12px; line-height: 1.6; box-shadow: 0 2px 8px rgba(0,0,0,0.12); z-index: 4500; display: none; white-space: nowrap; }
   .chart-tip .t { font-weight: 700; }
   .chart-tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
@@ -179,7 +180,7 @@
   .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; background: var(--accent-light); color: var(--accent); margin-right: 4px; }
   .pill.gray { background: var(--bg); color: var(--text-secondary); }
 
-  .modal-overlay { position: fixed; inset: 0; background: rgba(36, 41, 31, 0.45); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 1000; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(30, 40, 51, 0.45); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 1000; }
   .modal-box { background: var(--surface); border-radius: var(--radius); width: 100%; max-width: 520px; max-height: 85vh; overflow-y: auto; padding: 20px; }
   .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
   .modal-header h3 { margin: 0; font-size: 16px; font-weight: 700; }
@@ -201,24 +202,24 @@
   /* ===== 印刷(A4 1枚) ===== */
   #print-area { display: none; }
   .rp { font-family: 'Zen Kaku Gothic New', 'Hiragino Sans', 'Yu Gothic', sans-serif; color: #222; background: #fff; transform-origin: top left; }
-  .rp-head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #33513F; padding-bottom: 4px; margin-bottom: 8px; }
+  .rp-head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #2B5683; padding-bottom: 4px; margin-bottom: 8px; }
   .rp-title { font-size: 20px; font-weight: 700; }
   .rp-sub { font-size: 11px; color: #555; text-align: right; }
   .rp-stats { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   .rp-box { flex: 1 1 auto; min-width: 70px; border: 1px solid #ccc; border-radius: 4px; padding: 4px 8px; }
   .rp-box .l { font-size: 10px; color: #555; }
   .rp-box .v { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .rp-box.gold .v { color: #8a6a1f; } .rp-box.accent .v { color: #33513F; }
+  .rp-box.gold .v { color: #8a6a1f; } .rp-box.accent .v { color: #2B5683; }
   .rp-section { font-size: 12px; font-weight: 700; margin: 8px 0 4px; }
   .rp-table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
   .rp-table th, .rp-table td { border: 1px solid #bbb; padding: 2px 5px; white-space: nowrap; }
-  .rp-table th { background: #EEF0EA; font-weight: 500; }
+  .rp-table th { background: #E6EDF5; font-weight: 500; }
   .rp-table td.num, .rp-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .rp-table tr.strong td { font-weight: 700; background: #F2F5F0; }
+  .rp-table tr.strong td { font-weight: 700; background: #EEF3F9; }
   .rp-table tr.sub td:first-child { padding-left: 14px; }
-  .rp-table td.half { background: #F6F6F2; }
-  .rp-table tr.total td { font-weight: 700; background: #EEF0EA; }
-  .rp-table td.closed { text-align: center; color: #777; letter-spacing: 1em; background: #F6F6F2; }
+  .rp-table td.half { background: #F4F6F9; }
+  .rp-table tr.total td { font-weight: 700; background: #E6EDF5; }
+  .rp-table td.closed { text-align: center; color: #777; letter-spacing: 1em; background: #F4F6F9; }
   .rp-table .neg { color: #A9432E; }
   .rp .chart .axis-label { font-size: 10px; }
   .rp-note { font-size: 10px; color: #555; margin-top: 6px; }
@@ -1987,7 +1988,7 @@ function printMonth() {
   const per = (d, mob) => rows.filter(r => r.date === dayKey(d) && r.mobile === mob).reduce((a, r) => a + r.total, 0);
   const labels = [], uVals = [], mVals = [];
   for (let d = 1; d <= days; d++) { labels.push(String(d)); uVals.push(per(d, false)); mVals.push(per(d, true)); }
-  html += `<div class="rp-section">日ごとの売上</div>` + barChart({ width: 700, height: 150, labels, stacked: true, series: [{ name: '無人販売', color: '#3A8A5C', values: uVals }, { name: '移動販売', color: '#5B7FD6', values: mVals }] });
+  html += `<div class="rp-section">日ごとの売上</div>` + barChart({ width: 700, height: 150, labels, stacked: true, series: [{ name: '無人販売', color: '#5B7FD6', values: uVals }, { name: '移動販売', color: '#3A8A5C', values: mVals }] });
   // 日別の表
   const v = n => n ? yen(n) : '';
   const colsN = 4 + sIds.length + otherIds.length;
@@ -2014,8 +2015,8 @@ function printYear() {
   // 月ごとのグラフと曜日別を横に並べる
   const order = ['月', '火', '水', '木', '金', '土', '日'];
   const wd = order.map(w => { const u = rows.filter(r => !r.mobile && weekdayOf(r.date) === w && r.total); return u.length ? u.reduce((a, r) => a + r.total, 0) / u.length : 0; });
-  html += `<div style="display:flex; gap:14px;"><div style="flex:2;"><div class="rp-section">月ごとの売上</div>${barChart({ width: 680, height: 170, labels: months.map(mLabel), stacked: true, series: [{ name: '無人販売', color: '#3A8A5C', values: months.map(m => monthAgg[m].uTotal) }, { name: '移動販売', color: '#5B7FD6', values: months.map(m => monthAgg[m].mTotal) }] })}</div>
-    <div style="flex:1;"><div class="rp-section">曜日ごとの1日平均(無人)</div>${barChart({ width: 340, height: 170, labels: order, series: [{ name: '1日平均', color: '#3A8A5C', values: wd }] })}</div></div>`;
+  html += `<div style="display:flex; gap:14px;"><div style="flex:2;"><div class="rp-section">月ごとの売上</div>${barChart({ width: 680, height: 170, labels: months.map(mLabel), stacked: true, series: [{ name: '無人販売', color: '#5B7FD6', values: months.map(m => monthAgg[m].uTotal) }, { name: '移動販売', color: '#3A8A5C', values: months.map(m => monthAgg[m].mTotal) }] })}</div>
+    <div style="flex:1;"><div class="rp-section">曜日ごとの1日平均(無人)</div>${barChart({ width: 340, height: 170, labels: order, series: [{ name: '1日平均', color: '#5B7FD6', values: wd }] })}</div></div>`;
   const lines = lineDefs(Object.values(monthAgg), otherIds);
   const cols = [...months.slice(0, 6).map(m => ({ label: mLabel(m), a: monthAgg[m] })), { label: '上期', a: H1, half: true }, ...months.slice(6).map(m => ({ label: mLabel(m), a: monthAgg[m] })), { label: '下期', a: H2, half: true }, { label: '通期', a: FY, half: true }];
   html += `<div class="rp-section">月別集計</div><table class="rp-table"><thead><tr><th>項目</th>${cols.map(c => `<th class="num">${c.label}</th>`).join('')}</tr></thead><tbody>${
