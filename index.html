@@ -104,8 +104,8 @@
   .friend-grid { width: 100%; max-width: 640px; table-layout: fixed; border-collapse: collapse; }
   .friend-grid th { font-size: 12px; padding: 2px 4px 4px 0; border-bottom: none; }
   .friend-grid td { padding: 3px 4px 3px 0; border-bottom: none; }
-  .friend-grid th:nth-child(1) { width: 27%; } .friend-grid th:nth-child(2) { width: 22%; }
-  .friend-grid th:nth-child(3) { width: 25%; } .friend-grid .sg-x { width: 26px; padding-right: 0; }
+  .friend-grid th:nth-child(1) { width: 34%; } .friend-grid th:nth-child(2) { width: 28%; }
+  .friend-grid .sg-x { width: 26px; padding-right: 0; }
   .friend-grid .cell-input, .friend-grid .cell-select { width: 100%; min-width: 0; font-size: 14px; padding: 6px 4px; }
   .ex-table { width: 100%; max-width: 560px; table-layout: fixed; }
   .ex-table td { padding: 4px 6px 4px 0; border-bottom: none; }
@@ -862,13 +862,12 @@ function renderFriendRows(friends) {
   const wrap = document.getElementById('s-friends');
   if (!friends.length) { wrap.innerHTML = ''; return; }
   const plist = friendPlaceList();
-  wrap.innerHTML = `<table class="friend-grid"><thead><tr><th>名前</th><th>金額</th><th>場所</th><th>備考</th><th class="sg-x"></th></tr></thead><tbody>${friends.map((f, i) => {
-    const placeOpts = plist.map(o => `<option value="${o.id}" ${o.id === f.placeId ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')
-      + (f.placeId && !plist.some(o => o.id === f.placeId) ? `<option value="${escapeHtml(f.placeId)}" selected>${escapeHtml(placeName(f.placeId))}</option>` : '');
+  wrap.innerHTML = `<table class="friend-grid"><thead><tr><th>名前</th><th>金額</th><th>備考</th><th class="sg-x"></th></tr></thead><tbody>${friends.map((f, i) => {
+    // 場所は表示しない(このページの場所に自動で入る)
+    const placeId = f.placeId || (plist[0] ? plist[0].id : '');
     return `<tr class="fr-row">
       <td><select class="cell-select fr-seller">${sellerOptions(f.sellerId)}${f.sellerId && !sellerById(f.sellerId) ? `<option value="${escapeHtml(f.sellerId)}" selected>${escapeHtml(sellerName(f.sellerId))}</option>` : ''}</select></td>
-      <td><input class="cell-input num fr-amount" type="number" inputmode="numeric" step="1" placeholder="0" value="${escapeHtml(f.amount === undefined || f.amount === null ? '' : f.amount)}"></td>
-      <td><select class="cell-select fr-place">${placeOpts}</select></td>
+      <td><input class="cell-input num fr-amount" type="number" inputmode="numeric" step="1" placeholder="0" value="${escapeHtml(f.amount === undefined || f.amount === null ? '' : f.amount)}"><input type="hidden" class="fr-place" value="${escapeHtml(placeId)}"></td>
       <td><input class="cell-input fr-note" type="text" value="${escapeHtml(f.note || '')}"></td>
       <td class="sg-x"><button type="button" class="btn-text-danger fr-remove" data-idx="${i}" aria-label="この行を消す">×</button></td>
     </tr>`;
