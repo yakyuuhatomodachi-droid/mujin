@@ -89,6 +89,11 @@
   .row-actions { white-space: nowrap; text-align: right; }
   .nowrap-table th, .nowrap-table td { white-space: nowrap; }
   .stock-table .cell-input { width: 90px; min-width: 0; }
+  .ex-table { width: 100%; max-width: 560px; table-layout: fixed; }
+  .ex-table td { padding: 4px 6px 4px 0; border-bottom: none; }
+  .ex-table td:nth-child(1) { width: 28%; font-weight: 500; white-space: normal; }
+  .ex-table td:nth-child(2) { width: 34%; }
+  .ex-table .cell-input { width: 100%; min-width: 0; }
 
   /* 固定表示つきの表(見出し行・先頭列・合計列) */
   .scroll-wrap { overflow: auto; max-height: 70vh; border: 1px solid var(--border); border-radius: 8px; }
@@ -205,14 +210,12 @@
         <div class="field" id="s-event-field" style="display:none;"><label for="s-event">催し名</label><input id="s-event" type="text" placeholder="例: あさぎりマルシェ"></div>
       </div>
       <div class="form-row">
-        <div class="field"><label for="s-cash">現金(円)</label><input id="s-cash" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
+        <div class="field"><label for="s-cash">現金(知り合いの分も含めた合計・報告の「アクア」)</label><input id="s-cash" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
         <div class="field" id="s-paypay-field"><label for="s-paypay">PayPay(円)</label><input id="s-paypay" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
       </div>
       <div id="s-extras-wrap">
-        <div class="section-label">知り合いの売上を金額で入れる場合(ゲスト・金額しか分からない分)</div>
-        <div class="hint" style="margin-bottom:8px;">個数で管理している分は「知り合いの品出し」タブで入力すると自動で計算されます。ここには入れないでください</div>
+        <div class="section-label">知り合いの売上(金額)</div>
         <div id="s-extras"></div>
-        <button type="button" class="btn-ghost" id="s-add-extra">+ 金額の行を追加</button>
       </div>
       <div class="form-row" style="margin-top:12px;">
         <div class="field"><label for="s-note">備考</label><input id="s-note" type="text" placeholder="例: 金券500円1枚"></div>
@@ -779,30 +782,35 @@ function sellerOptions(selectedId) {
   return '<option value="">選んでください</option>' + sellers.map(s => `<option value="${s.id}" ${s.id === selectedId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
 }
 
-function readExtras() {
-  return [...document.querySelectorAll('#s-extras .extra-row')].map(r => ({
-    sellerId: r.querySelector('.x-seller').value,
-    amount: r.querySelector('.x-amount').value,
-    note: r.querySelector('.x-note').value
-  }));
+// 知り合いの金額欄:出品者全員分を最初から並べる
+function readExtraValues() {
+  const v = {};
+  document.querySelectorAll('#s-extras .ex-row').forEach(r => {
+    v[r.dataset.seller] = { amount: r.querySelector('.ex-amount').value, note: r.querySelector('.ex-note').value };
+  });
+  return v;
 }
-function renderExtras(list) {
+function renderExtras(values) {
+  values = values || {};
   const wrap = document.getElementById('s-extras');
-  wrap.innerHTML = list.map((x, i) => `
-    <div class="extra-row" data-idx="${i}">
-      <div class="field"><label>出品者</label><select class="cell-select x-seller">${sellerOptions(x.sellerId)}</select></div>
-      <div class="field"><label>金額(円)</label><input class="cell-input x-amount" type="number" inputmode="numeric" step="1" value="${escapeHtml(x.amount)}"></div>
-      <div class="field"><label>メモ</label><input class="cell-input x-note" type="text" value="${escapeHtml(x.note)}" placeholder="例: ゲスト中村さん"></div>
-      <button type="button" class="btn-text-danger x-remove" data-idx="${i}">削除</button>
-    </div>`).join('');
-  wrap.querySelectorAll('.x-remove').forEach(b => b.addEventListener('click', () => {
-    const cur = readExtras(); cur.splice(parseInt(b.dataset.idx, 10), 1); renderExtras(cur); updateSalePreview();
-  }));
-  wrap.querySelectorAll('input, select').forEach(el => el.addEventListener('input', updateSalePreview));
+  const ids = sellers.map(s => s.id);
+  Object.keys(values).forEach(id => { if (ids.indexOf(id) === -1) ids.push(id); });
+  if (ids.length === 0) { wrap.innerHTML = '<div class="hint">知り合い(出品者)が登録されていません。マスタで追加できます</div>'; return; }
+  wrap.innerHTML = `<table class="nowrap-table ex-table"><tbody>${ids.map(id => {
+    const v = values[id] || {};
+    return `<tr class="ex-row" data-seller="${escapeHtml(id)}">
+      <td class="ex-name">${escapeHtml(sellerName(id))}</td>
+      <td><input class="cell-input ex-amount num" type="number" inputmode="numeric" step="1" placeholder="0" value="${escapeHtml(v.amount === undefined || v.amount === null ? '' : v.amount)}"></td>
+      <td><input class="cell-input ex-note" type="text" placeholder="メモ" value="${escapeHtml(v.note || '')}"></td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
+  wrap.querySelectorAll('input').forEach(el => el.addEventListener('input', updateSalePreview));
 }
-document.getElementById('s-add-extra').addEventListener('click', () => {
-  const cur = readExtras(); cur.push({ sellerId: '', amount: '', note: '' }); renderExtras(cur);
-});
+function collectExtras() {
+  const v = readExtraValues();
+  return Object.keys(v).filter(id => String(v[id].amount).trim() !== '' && toNum(v[id].amount) !== 0)
+    .map(id => ({ sellerId: id, amount: toNum(v[id].amount), note: v[id].note.trim() }));
+}
 
 function applySalePlaceVisibility() {
   const p = placeById(document.getElementById('s-place').value);
@@ -814,33 +822,33 @@ function updateSalePreview() {
   const p = placeById(document.getElementById('s-place').value);
   const cash = toNum(document.getElementById('s-cash').value);
   const paypay = p && p.hasPayPay === false ? 0 : toNum(document.getElementById('s-paypay').value);
-  const extras = p && p.allowSellers === false ? 0 : readExtras().reduce((a, x) => a + toNum(x.amount), 0);
-  document.getElementById('s-total-preview').textContent =
-    '合計 ' + yen(cash + paypay) + (extras ? '(うち金額入力の知り合い分 ' + yen(extras) + ')' : '');
+  const friends = p && p.allowSellers === false ? 0 : collectExtras().reduce((a, x) => a + x.amount, 0);
+  const total = cash + paypay;
+  document.getElementById('s-total-preview').innerHTML = total || friends
+    ? '合計 ' + yen(total) + '　<span style="color:var(--gold)">知り合い ' + yen(friends) + '</span>　<span style="color:var(--accent)">アクア ' + yen(total - friends) + '</span>'
+    : '';
 }
-function renderSaleForm(keepValues) {
+function renderSaleForm() {
   const sel = document.getElementById('s-place');
   const prev = sel.value;
   sel.innerHTML = placeOptions(prev);
-  if (!keepValues && !editingSaleId) {
-    if (!document.getElementById('s-date').value) document.getElementById('s-date').value = todayStr();
-  }
   if (prev && placeById(prev)) sel.value = prev;
-  // 金額行の出品者リストを最新にする
-  renderExtras(readExtras());
+  if (!document.getElementById('s-date').value) document.getElementById('s-date').value = todayStr();
+  renderExtras(readExtraValues()); // 出品者の追加・名前変更を反映(入力中の値は残す)
   applySalePlaceVisibility();
   updateSalePreview();
 }
+// 記録後は日付と場所を残し、金額だけ空にする
 function resetSaleForm() {
   editingSaleId = null;
   document.getElementById('s-heading').textContent = '売上を記録';
   document.getElementById('s-submit').textContent = '記録する';
   document.getElementById('s-cancel').style.display = 'none';
   ['s-cash', 's-paypay', 's-event', 's-note'].forEach(id => { document.getElementById(id).value = ''; });
-  renderExtras([]);
+  renderExtras({});
   updateSalePreview();
 }
-['s-place'].forEach(id => document.getElementById(id).addEventListener('change', () => { applySalePlaceVisibility(); updateSalePreview(); }));
+document.getElementById('s-place').addEventListener('change', () => { applySalePlaceVisibility(); updateSalePreview(); });
 ['s-cash', 's-paypay'].forEach(id => document.getElementById(id).addEventListener('input', updateSalePreview));
 document.getElementById('s-cancel').addEventListener('click', resetSaleForm);
 
@@ -859,7 +867,13 @@ function editSale(id) {
   document.getElementById('s-cash').value = s.cash === null || s.cash === undefined ? '' : s.cash;
   document.getElementById('s-paypay').value = s.paypay === null || s.paypay === undefined ? '' : s.paypay;
   document.getElementById('s-note').value = s.note || '';
-  renderExtras((s.extras || []).map(x => ({ sellerId: x.sellerId, amount: x.amount, note: x.note || '' })));
+  const vals = {};
+  (s.extras || []).forEach(x => {
+    if (!vals[x.sellerId]) vals[x.sellerId] = { amount: 0, note: '' };
+    vals[x.sellerId].amount += toNum(x.amount);
+    if (x.note) vals[x.sellerId].note = vals[x.sellerId].note ? vals[x.sellerId].note + '、' + x.note : x.note;
+  });
+  renderExtras(vals);
   applySalePlaceVisibility();
   updateSalePreview();
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -871,9 +885,7 @@ document.getElementById('s-submit').addEventListener('click', async () => {
   const p = placeById(placeId);
   const cash = inputNum(document.getElementById('s-cash'));
   const paypay = p && p.hasPayPay === false ? null : inputNum(document.getElementById('s-paypay'));
-  const extras = (p && p.allowSellers === false ? [] : readExtras())
-    .filter(x => x.sellerId && String(x.amount).trim() !== '')
-    .map(x => ({ sellerId: x.sellerId, amount: toNum(x.amount), note: x.note.trim() }));
+  const extras = p && p.allowSellers === false ? [] : collectExtras();
   const errorEl = document.getElementById('s-error');
   if (!date || !p || (cash === null && paypay === null && extras.length === 0)) { errorEl.classList.add('show'); return; }
   errorEl.classList.remove('show');
@@ -897,8 +909,10 @@ document.getElementById('s-submit').addEventListener('click', async () => {
   const ok = await saveRecord('sale', rec);
   btn.disabled = false;
   if (ok) {
-    showSaveModal(wasEditing ? '売上を更新しました' : fmtMD(date) + '「' + p.name + '」' + yen(toNum(cash) + toNum(paypay)) + 'を記録しました', true);
+    const friends = extras.reduce((a, x) => a + x.amount, 0);
+    showSaveModal((wasEditing ? '更新しました:' : '記録しました:') + fmtMD(date) + '「' + p.name + '」合計 ' + yen(toNum(cash) + toNum(paypay)) + (friends ? '(知り合い ' + yen(friends) + ')' : ''), true);
     resetSaleForm();
+    document.getElementById('s-cash').focus();
   } else {
     showSaveModal('保存に失敗しました。通信状況を確認して、もう一度「記録する」を押してください', false);
   }
