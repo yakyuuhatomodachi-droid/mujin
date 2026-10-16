@@ -128,6 +128,7 @@
   .fixed-table td.col-half { background: var(--bg); font-weight: 500; }
   .fixed-table tr.row-total td { font-weight: 700; background: var(--bg); }
   .fixed-table td.neg { color: var(--danger); }
+  .fixed-table td.closed-cell { text-align: center; letter-spacing: 1em; color: var(--text-secondary); background: var(--bg); font-weight: 500; }
   .fixed-table tr.clickable { cursor: pointer; }
   .fixed-table tr.clickable:hover td { background: var(--accent-light); }
 
@@ -240,6 +241,7 @@
       <div class="error-text" id="s-error">日付を選び、金額を入力してください</div>
       <div class="btn-row">
         <button class="btn btn-primary" id="s-submit">記録する</button>
+        <button class="btn-ghost" id="s-closed">休みにする</button>
         <button class="btn-ghost" id="s-cancel" style="display:none;">編集をやめる</button>
       </div>
     </div>
@@ -715,12 +717,17 @@ function stockLevelBefore(placeId, sellerId, itemId, date, createdAt, excludeId)
   return lv;
 }
 // 日付×場所ごとの行を作る(日別一覧・知り合い集計・年度集計の元)
+// 休みの記録(過去データの「休み」だけの備考も休みとして扱う)
+function isClosedRec(s) {
+  const empty = (s.cash === null || s.cash === undefined) && (s.paypay === null || s.paypay === undefined) && !(s.extras || []).length;
+  return !!s.closed || (empty && String(s.note || '').trim() === '休み');
+}
 function buildDayRows(fromDate, toDate) {
   const { results } = computeStock();
   const map = {};
   function row(date, placeId) {
     const k = date + '|' + placeId;
-    if (!map[k]) map[k] = { date, placeId, cash: 0, paypay: 0, sellers: {}, events: [], notes: [], saleIds: [], stockIds: [], warn: false };
+    if (!map[k]) map[k] = { date, placeId, cash: 0, paypay: 0, sellers: {}, events: [], notes: [], saleIds: [], stockIds: [], warn: false, closed: false };
     return map[k];
   }
   sales.forEach(s => {
@@ -730,7 +737,8 @@ function buildDayRows(fromDate, toDate) {
     r.paypay += toNum(s.paypay);
     (s.extras || []).forEach(x => { r.sellers[x.sellerId] = (r.sellers[x.sellerId] || 0) + toNum(x.amount); });
     if (s.eventName && r.events.indexOf(s.eventName) === -1) r.events.push(s.eventName);
-    if (s.note) r.notes.push(s.note);
+    if (isClosedRec(s)) r.closed = true;
+    else if (s.note) r.notes.push(s.note);
     r.saleIds.push(s.id);
   });
   stocks.forEach(st => {
@@ -819,6 +827,7 @@ let saleMode = 'unmanned';
 let saleMobilePlaceId = null;
 function setSaleMode(mode) {
   saleMode = mode;
+  document.getElementById('s-closed').style.display = mode === 'mobile' ? 'none' : '';
   document.querySelectorAll('#s-mode .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
 }
 document.querySelectorAll('#s-mode .seg-btn').forEach(b => b.addEventListener('click', () => {
@@ -941,6 +950,10 @@ function updateDayNotice() {
   const el = document.getElementById('s-day-notice');
   const ids = saleLayout().involved.map(p => p.id);
   if (editingDate || !date || !sales.some(s => s.date === date && ids.indexOf(s.placeId) !== -1)) { el.innerHTML = ''; return; }
+  if (saleMode !== 'mobile' && sales.some(s => s.date === date && ids.indexOf(s.placeId) !== -1 && isClosedRec(s))) {
+    el.innerHTML = 'この日は「休み」になっています。売上を入れて「記録する」を押すと、休みは取り消されます。';
+    return;
+  }
   el.innerHTML = 'この日は' + (saleMode === 'mobile' ? '移動販売の' : '') + '記録がすでにあります。<button type="button" class="btn-text" id="s-open-day">この日の記録を開いて直す</button>';
   document.getElementById('s-open-day').addEventListener('click', () => editDay(date));
 }
@@ -953,6 +966,7 @@ function renderSaleForm() {
 // 記録後は日付を残し、金額だけ空にする
 function resetSaleForm() {
   editingDate = null;
+  document.getElementById('s-closed').style.display = saleMode === 'mobile' ? 'none' : '';
   document.getElementById('s-heading').textContent = '売上を記録';
   document.getElementById('s-submit').textContent = '記録する';
   document.getElementById('s-cancel').style.display = 'none';
@@ -975,6 +989,7 @@ function firstRecordsOfDay(date) {
 function editDay(date) {
   goTab('input');
   editingDate = date;
+  document.getElementById('s-closed').style.display = 'none';
   document.getElementById('s-heading').textContent = fmtMD(date) + 'の' + (saleMode === 'mobile' ? '移動販売' : '無人販売') + 'を編集';
   document.getElementById('s-submit').textContent = '更新する';
   document.getElementById('s-cancel').style.display = 'inline-block';
@@ -1007,6 +1022,29 @@ function editSale(id) {
   editDay(s.date);
 }
 
+// 休みにする:その日の無人販売の記録を「休み」1件にする
+document.getElementById('s-closed').addEventListener('click', async () => {
+  const date = document.getElementById('s-date').value;
+  if (!date) { showToast('日付を選んでください'); return; }
+  const ups = places.filter(p => p.type !== 'mobile');
+  const main = ups.find(p => p.allowSellers !== false) || ups[0];
+  if (!main) { showToast('販売場所が登録されていません'); return; }
+  const existing = sales.filter(s => s.date === date && ups.some(u => u.id === s.placeId));
+  if (existing.some(isClosedRec)) { showToast(fmtMD(date) + 'はすでに休みになっています'); return; }
+  const hasValues = existing.length > 0;
+  const ok = await showConfirm(hasValues ? fmtMD(date) + 'には無人販売の記録があります。\nその記録を消して「休み」にしますか？' : fmtMD(date) + 'を休みにしますか？', '休みにする');
+  if (!ok) return;
+  const rec = { id: uid(), createdAt: Date.now(), date, placeId: main.id, eventName: '', cash: null, paypay: null, extras: [], note: '', closed: true };
+  sales = sales.filter(s => existing.indexOf(s) === -1);
+  sales.push(rec);
+  let saved = await saveRecord('sale', rec);
+  for (const old of existing) { if (!(await deleteRecord('sale', old.id))) saved = false; }
+  [dYear, dMonth] = date.split('-').map(Number);
+  showSaveModal(saved ? fmtMD(date) + 'を休みにしました' : '保存できなかった項目があります。「最新に更新」を押して確認してください', saved);
+  resetSaleForm();
+  renderDaily();
+});
+
 document.getElementById('s-submit').addEventListener('click', async () => {
   const date = document.getElementById('s-date').value;
   const { list, missingSeller } = collectSaleRecords();
@@ -1018,7 +1056,7 @@ document.getElementById('s-submit').addEventListener('click', async () => {
   const note = document.getElementById('s-note').value.trim();
 
   if (!editingDate) {
-    const dup = filled.filter(r => !isMobile(r.placeId) && sales.some(s => s.date === date && s.placeId === r.placeId));
+    const dup = filled.filter(r => !isMobile(r.placeId) && sales.some(s => s.date === date && s.placeId === r.placeId && !isClosedRec(s)));
     if (dup.length) {
       const go = await showConfirm(fmtMD(date) + 'の「' + dup.map(r => placeName(r.placeId)).join('・') + '」はすでに記録があります。\nもう1件追加しますか？(金額は合算されます)\n直したい場合は「キャンセル」を押し、「この日の記録を開いて直す」から修正してください', '追加する');
       if (!go) return;
@@ -1030,9 +1068,14 @@ document.getElementById('s-submit').addEventListener('click', async () => {
   // 備考はアクアの記録(なければ最初の記録)に付ける
   const noteTarget = (filled.find(r => r.extras.length || (!isMobile(r.placeId) && placeById(r.placeId) && placeById(r.placeId).allowSellers !== false)) || filled[0] || {}).placeId;
   const toSave = [], toDelete = [];
+  // 休みの日に売上を記録したら、休みの記録は消す
+  if (!editingDate && filled.length) {
+    const ids = list.map(r => r.placeId);
+    sales.filter(x => x.date === date && ids.indexOf(x.placeId) !== -1 && isClosedRec(x)).forEach(x => toDelete.push(x));
+  }
   list.forEach(r => {
     const old = existing[r.placeId];
-    const fields = { date, placeId: r.placeId, eventName: isMobile(r.placeId) ? r.eventName : '', cash: r.cash, paypay: r.paypay, extras: r.extras };
+    const fields = { date, placeId: r.placeId, eventName: isMobile(r.placeId) ? r.eventName : '', cash: r.cash, paypay: r.paypay, extras: r.extras, closed: false };
     if (r.placeId === noteTarget) fields.note = note;
     else if (!old) fields.note = '';
     if (r.hasValue) {
@@ -1297,6 +1340,7 @@ function mergeDailyRows(rows) {
     r.events.forEach(e => { if (m.events.indexOf(e) === -1) m.events.push(e); });
     m.notes = m.notes.concat(r.notes);
     if (r.warn) m.warn = true;
+    if (r.closed) m.closed = true;
   });
   return Object.values(map).sort((a, b) => a.date !== b.date ? (a.date < b.date ? -1 : 1) : (a.mobile - b.mobile));
 }
@@ -1335,14 +1379,16 @@ function renderDaily() {
   wrap.innerHTML = `<table class="fixed-table">
     <colgroup><col style="width:120px"><col style="width:105px"><col style="width:105px">${sIds.map(() => '<col style="width:90px">').join('')}${otherIds.map(() => '<col style="width:90px">').join('')}<col style="width:95px"><col style="width:200px"><col style="width:110px"></colgroup>
     <thead><tr><th class="col-first">日付</th><th class="num">アクア合計</th><th class="num">アクア</th>${sIds.map(id => `<th class="num">${escapeHtml(sellerName(id))}</th>`).join('')}${otherIds.map(id => `<th class="num">${escapeHtml(placeName(id))}</th>`).join('')}<th class="num">PayPay</th><th>備考</th><th class="col-last num">単日合計</th></tr></thead>
-    <tbody>${rows.map((r, i) => `<tr class="clickable" data-idx="${i}">
+    <tbody>${rows.map((r, i) => r.closed && !r.total && !r.friends
+      ? `<tr class="clickable" data-idx="${i}"><td class="col-first">${fmtMD(r.date)}</td><td class="closed-cell" colspan="${4 + sIds.length + otherIds.length}">休み</td><td class="col-last"></td></tr>`
+      : `<tr class="clickable" data-idx="${i}">
       <td class="col-first">${fmtMD(r.date)}${r.mobile ? '<br><span class="hint">移動販売' + (r.events.length ? '・' + escapeHtml(r.events.join('・')) : '') + '</span>' : ''}</td>
       <td class="num">${v(r.aquaTotal)}</td>
       <td class="num ${r.aquaNet < 0 ? 'neg' : ''}">${v(r.aquaNet)}${r.warn ? '<br><span class="warn-text">要確認</span>' : ''}</td>
       ${sIds.map(id => `<td class="num">${v(r.sellers[id])}</td>`).join('')}
       ${otherIds.map(id => `<td class="num">${r.mobile ? '' : v(r.placeCash[id])}</td>`).join('')}
       <td class="num">${v(r.paypay)}</td>
-      <td style="white-space:normal;">${escapeHtml(r.notes.join(' / '))}</td>
+      <td style="white-space:normal;">${escapeHtml((r.closed ? ['休み'] : []).concat(r.notes).join(' / '))}</td>
       <td class="col-last num">${yen(r.total)}</td>
     </tr>`).join('')}</tbody>
     <tfoot><tr class="row-total"><td class="col-first">合計</td><td class="num">${yen(sum('aquaTotal'))}</td><td class="num">${yen(sum('aquaNet'))}</td>${sIds.map(id => `<td class="num">${yen(sellerSum[id])}</td>`).join('')}${otherIds.map(id => `<td class="num">${yen(otherSum(id))}</td>`).join('')}<td class="num">${yen(sum('paypay'))}</td><td></td><td class="col-last num">${yen(sum('total'))}</td></tr></tfoot>
@@ -1369,7 +1415,11 @@ function renderDetail() {
   const dayStocks = stocks.filter(s => s.date === date && placeIds.indexOf(s.placeId) !== -1).sort(recOrder);
   const body = document.getElementById('detail-body');
   let html = '<div class="section-label">売上(回収した金額)</div>';
-  html += daySales.length === 0 ? '<div class="hint">記録なし</div>' : daySales.map(s => `
+  html += daySales.length === 0 ? '<div class="hint">記録なし</div>' : daySales.map(s => isClosedRec(s) ? `
+    <div class="detail-row">
+      <div class="detail-title">休み</div>
+      <div class="btn-row" style="margin-top:6px;"><button class="btn-ghost btn-danger" data-del-sale="${s.id}">休みを取り消す</button></div>
+    </div>` : `
     <div class="detail-row">
       <div class="detail-title">${escapeHtml(s.eventName || placeName(s.placeId))}　合計 ${yen(toNum(s.cash) + toNum(s.paypay))}</div>
       <div class="detail-sub">現金 ${yen(s.cash)}${s.paypay !== null && s.paypay !== undefined ? '・PayPay ' + yen(s.paypay) : ''}</div>
