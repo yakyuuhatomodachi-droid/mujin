@@ -130,6 +130,9 @@
   .fixed-table td.neg { color: var(--danger); }
   .fixed-table td.closed-cell { text-align: center; letter-spacing: 1em; color: var(--text-secondary); background: var(--bg); font-weight: 500; }
   .fixed-table tr.clickable { cursor: pointer; }
+  .fixed-table td[data-edit] { cursor: text; }
+  .fixed-table tr.clickable td[data-edit]:hover { box-shadow: inset 0 0 0 2px var(--accent); }
+  .fixed-table td .cell-edit { width: 100%; font-family: inherit; font-size: 13px; padding: 3px 4px; border: 1px solid var(--accent); border-radius: 4px; background: #fff; }
   .fixed-table tr.clickable:hover td { background: var(--accent-light); }
 
   :root { --c1: #3A8A5C; --c2: #5B7FD6; }
@@ -270,7 +273,7 @@
     </div>
     <div class="card">
       <div class="btn-row" style="margin-bottom:10px;">
-        <span class="hint">行を押すと、その日の記録の確認・編集・削除ができます</span>
+        <span class="hint">金額や備考のマスを押すと、その場で直せます(Enterで保存、Escでやめる)。日付を押すとその日の詳細が開きます</span>
         <div class="zoom-control">
           <button type="button" class="btn-ghost zoom-out">−</button><span class="zoom-label">100%</span><button type="button" class="btn-ghost zoom-in">＋</button><button type="button" class="btn-text zoom-reset">リセット</button>
         </div>
@@ -1184,7 +1187,7 @@ function aquaRows(from, to) {
     r.aquaTotal = r.mobile ? r.cash : (mainPlace ? (r.placeCash[mainPlace.id] || 0) : 0);
     r.aquaNet = r.aquaTotal - r.friends;
   });
-  return { rows, otherIds };
+  return { rows, otherIds, mainPlace };
 }
 function renderDaily() {
   const [from, to] = monthRange(dYear, dMonth);
@@ -1192,7 +1195,7 @@ function renderDaily() {
   document.getElementById('d-title').textContent = dYear + '年' + dMonth + '月';
   document.getElementById('d-jump').style.display = (dYear === now.getFullYear() && dMonth === now.getMonth() + 1) ? 'none' : 'inline-block';
   // 列の並びはExcelに合わせる:日付・アクア合計・アクア・知り合い(人ごと)・幸福駅など・PayPay・単日合計・備考
-  const { rows, otherIds } = aquaRows(from, to);
+  const { rows, otherIds, mainPlace } = aquaRows(from, to);
   const sum = f => rows.reduce((a, r) => a + r[f], 0);
   const otherSum = id => rows.reduce((a, r) => a + (r.mobile ? 0 : (r.placeCash[id] || 0)), 0);
   // 知り合いは人ごとに列を出す(その月0円の人は出さない)。並びはマスタの出品者の順
@@ -1209,6 +1212,14 @@ function renderDaily() {
   const wrap = document.getElementById('d-table');
   if (rows.length === 0) { wrap.innerHTML = '<div class="empty-state">この月の記録はありません</div>'; return; }
   const v = n => n ? yen(n) : '';
+  // マスを押して直せるようにする(同じ日・同じ場所の記録が2件以上ある場合は詳細から直す)
+  const payPlace = places.find(p => p.type !== 'mobile' && p.hasPayPay !== false);
+  const mainFor = r => r.mobile ? r.placeIds[0] : (mainPlace ? mainPlace.id : null);
+  const payFor = r => r.mobile ? (placeById(r.placeIds[0]) && placeById(r.placeIds[0]).hasPayPay === false ? null : r.placeIds[0]) : (payPlace ? payPlace.id : null);
+  const ed = (r, i, field, placeId, sellerId) => {
+    if (!placeId || openRecordsOf(r.date, placeId).length > 1) return '';
+    return `data-edit="${field}" data-idx="${i}" data-place="${placeId}"${sellerId ? ` data-seller="${sellerId}"` : ''}`;
+  };
   wrap.innerHTML = `<table class="fixed-table">
     <colgroup><col style="width:120px"><col style="width:105px"><col style="width:105px">${sIds.map(() => '<col style="width:90px">').join('')}${otherIds.map(() => '<col style="width:90px">').join('')}<col style="width:95px"><col style="width:200px"><col style="width:110px"></colgroup>
     <thead><tr><th class="col-first">日付</th><th class="num">アクア合計</th><th class="num">アクア</th>${sIds.map(id => `<th class="num">${escapeHtml(sellerName(id))}</th>`).join('')}${otherIds.map(id => `<th class="num">${escapeHtml(placeName(id))}</th>`).join('')}<th class="num">PayPay</th><th>備考</th><th class="col-last num">単日合計</th></tr></thead>
@@ -1216,18 +1227,82 @@ function renderDaily() {
       ? `<tr class="clickable" data-idx="${i}"><td class="col-first">${fmtMD(r.date)}</td><td class="closed-cell" colspan="${4 + sIds.length + otherIds.length}">休み</td><td class="col-last"></td></tr>`
       : `<tr class="clickable" data-idx="${i}">
       <td class="col-first">${fmtMD(r.date)}${r.mobile ? '<br><span class="hint">移動販売' + (r.events.length ? '・' + escapeHtml(r.events.join('・')) : '') + '</span>' : ''}</td>
-      <td class="num">${v(r.aquaTotal)}</td>
+      <td class="num" ${ed(r, i, 'cash', mainFor(r))}>${v(r.aquaTotal)}</td>
       <td class="num ${r.aquaNet < 0 ? 'neg' : ''}">${v(r.aquaNet)}${r.warn ? '<br><span class="warn-text">要確認</span>' : ''}</td>
-      ${sIds.map(id => `<td class="num">${v(r.sellers[id])}</td>`).join('')}
-      ${otherIds.map(id => `<td class="num">${r.mobile ? '' : v(r.placeCash[id])}</td>`).join('')}
-      <td class="num">${v(r.paypay)}</td>
-      <td style="white-space:normal;">${escapeHtml((r.closed ? ['休み'] : []).concat(r.notes).join(' / '))}</td>
+      ${sIds.map(id => `<td class="num" ${ed(r, i, 'seller', mainFor(r), id)}>${v(r.sellers[id])}</td>`).join('')}
+      ${otherIds.map(id => `<td class="num" ${r.mobile ? '' : ed(r, i, 'cash', id)}>${r.mobile ? '' : v(r.placeCash[id])}</td>`).join('')}
+      <td class="num" ${ed(r, i, 'paypay', payFor(r))}>${v(r.paypay)}</td>
+      <td style="white-space:normal;" ${ed(r, i, 'note', mainFor(r))}>${escapeHtml((r.closed ? ['休み'] : []).concat(r.notes).join(' / '))}</td>
       <td class="col-last num">${yen(r.total)}</td>
     </tr>`).join('')}</tbody>
     <tfoot><tr class="row-total"><td class="col-first">合計</td><td class="num">${yen(sum('aquaTotal'))}</td><td class="num">${yen(sum('aquaNet'))}</td>${sIds.map(id => `<td class="num">${yen(sellerSum[id])}</td>`).join('')}${otherIds.map(id => `<td class="num">${yen(otherSum(id))}</td>`).join('')}<td class="num">${yen(sum('paypay'))}</td><td></td><td class="col-last num">${yen(sum('total'))}</td></tr></tfoot>
   </table>`;
-  wrap.querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', () => openDetail(rows[parseInt(tr.dataset.idx, 10)])));
+  // 日付・休み・自動計算のマスはその日の詳細を開く。金額のマスはその場で直す
+  wrap.querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', e => {
+    const td = e.target.closest('td');
+    if (!td || td.querySelector('input')) return;
+    if (td.dataset.edit) { startCellEdit(td, rows[parseInt(td.dataset.idx, 10)]); return; }
+    openDetail(rows[parseInt(tr.dataset.idx, 10)]);
+  }));
   applyZoom();
+}
+// その日・その場所の記録(休みを除く)
+function openRecordsOf(date, placeId) {
+  return sales.filter(x => x.date === date && x.placeId === placeId && !isClosedRec(x)).sort(recOrder);
+}
+function startCellEdit(td, row) {
+  const field = td.dataset.edit, placeId = td.dataset.place, sellerId = td.dataset.seller;
+  const rec = openRecordsOf(row.date, placeId)[0];
+  let cur = '';
+  if (rec) {
+    if (field === 'cash' || field === 'paypay') cur = rec[field] === null || rec[field] === undefined ? '' : rec[field];
+    if (field === 'note') cur = rec.note || '';
+    if (field === 'seller') cur = (rec.extras || []).filter(x => x.sellerId === sellerId).reduce((a, x) => a + toNum(x.amount), 0) || '';
+  }
+  const isText = field === 'note';
+  td.innerHTML = `<input class="cell-edit ${isText ? '' : 'num'}" type="${isText ? 'text' : 'number'}" ${isText ? '' : 'inputmode="numeric" step="1"'} value="${escapeHtml(cur)}">`;
+  const inp = td.querySelector('input');
+  inp.focus(); inp.select();
+  let done = false;
+  const finish = async save => {
+    if (done) return; done = true;
+    if (!save || String(inp.value) === String(cur)) { renderDaily(); return; }
+    await saveCellValue(row.date, placeId, field, sellerId, inp.value);
+  };
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  inp.addEventListener('blur', () => finish(true));
+}
+async function saveCellValue(date, placeId, field, sellerId, raw) {
+  const text = String(raw).trim();
+  const num = text === '' ? null : toNum(text);
+  let rec = openRecordsOf(date, placeId)[0];
+  const isNew = !rec;
+  if (isNew) {
+    if (text === '' || (field !== 'note' && !num)) { renderDaily(); return; }
+    rec = { id: uid(), createdAt: Date.now(), date, placeId, eventName: '', cash: null, paypay: null, extras: [], note: '' };
+  }
+  if (field === 'cash' || field === 'paypay') rec[field] = num;
+  if (field === 'note') rec.note = text;
+  if (field === 'seller') {
+    const keepNote = ((rec.extras || []).find(x => x.sellerId === sellerId) || {}).note || '';
+    rec.extras = (rec.extras || []).filter(x => x.sellerId !== sellerId);
+    if (num) rec.extras.push({ sellerId, amount: num, note: keepNote });
+  }
+  rec.updatedAt = Date.now();
+  const empty = (rec.cash === null || rec.cash === undefined) && (rec.paypay === null || rec.paypay === undefined) && !(rec.extras || []).length && !rec.note;
+  // 金額が入ったら、その日の無人販売の「休み」は取り消す
+  const closedRecs = (!empty && !isMobile(placeId)) ? sales.filter(x => x.date === date && !isMobile(x.placeId) && isClosedRec(x)) : [];
+  if (isNew) sales.push(rec);
+  if (empty) sales = sales.filter(x => x !== rec);
+  sales = sales.filter(x => closedRecs.indexOf(x) === -1);
+  renderDaily();
+  let ok = empty ? (isNew ? true : await deleteRecord('sale', rec.id)) : await saveRecord('sale', rec);
+  for (const c of closedRecs) { if (!(await deleteRecord('sale', c.id))) ok = false; }
+  if (ok) showToast(fmtMD(date) + ' 保存しました');
+  updateDayNotice();
 }
 document.getElementById('d-prev').addEventListener('click', () => { [dYear, dMonth] = stepMonth(dYear, dMonth, -1); renderDaily(); });
 document.getElementById('d-next').addEventListener('click', () => { [dYear, dMonth] = stepMonth(dYear, dMonth, 1); renderDaily(); });
@@ -1463,7 +1538,7 @@ function renderYearHeader() {
 function renderYear() {
   renderYearHeader();
   const { months, from, to } = fyRange(yFY);
-  const { rows, otherIds } = aquaRows(from, to);
+  const { rows, otherIds, mainPlace } = aquaRows(from, to);
   const monthAgg = {};
   months.forEach(m => { monthAgg[m] = aggregate(rows.filter(r => r.date.slice(0, 7) === m)); });
   const aggOf = list => aggregate(rows.filter(r => list.indexOf(r.date.slice(0, 7)) !== -1));
@@ -1573,7 +1648,7 @@ function renderRange() {
   if (!fEl.value || !tEl.value) { const [f, t] = monthRange(new Date().getFullYear(), new Date().getMonth() + 1); fEl.value = f; tEl.value = t; }
   let from = fEl.value, to = tEl.value;
   if (from > to) { const x = from; from = to; to = x; }
-  const { rows, otherIds } = aquaRows(from, to);
+  const { rows, otherIds, mainPlace } = aquaRows(from, to);
   const A = aggregate(rows);
   document.getElementById('r-stats').innerHTML = `
     <div class="stat-box"><div class="stat-label">合計(無人+移動)</div><div class="stat-value">${yen(A.total)}</div></div>
