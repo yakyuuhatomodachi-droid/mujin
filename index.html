@@ -196,6 +196,37 @@
   .toast { position: fixed; right: 16px; bottom: 16px; background: var(--text-primary); color: #fff; font-size: 13px; padding: 10px 14px; border-radius: 8px; z-index: 4000; opacity: 0; transform: translateY(8px); transition: opacity .2s, transform .2s; pointer-events: none; max-width: 80vw; }
   .toast.show { opacity: 0.94; transform: translateY(0); }
 
+  /* ===== 印刷(A4 1枚) ===== */
+  #print-area { display: none; }
+  .rp { font-family: 'Zen Kaku Gothic New', 'Hiragino Sans', 'Yu Gothic', sans-serif; color: #222; background: #fff; transform-origin: top left; }
+  .rp-head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #33513F; padding-bottom: 4px; margin-bottom: 8px; }
+  .rp-title { font-size: 20px; font-weight: 700; }
+  .rp-sub { font-size: 11px; color: #555; text-align: right; }
+  .rp-stats { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .rp-box { flex: 1 1 auto; min-width: 70px; border: 1px solid #ccc; border-radius: 4px; padding: 4px 8px; }
+  .rp-box .l { font-size: 10px; color: #555; }
+  .rp-box .v { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .rp-box.gold .v { color: #8a6a1f; } .rp-box.accent .v { color: #33513F; }
+  .rp-section { font-size: 12px; font-weight: 700; margin: 8px 0 4px; }
+  .rp-table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+  .rp-table th, .rp-table td { border: 1px solid #bbb; padding: 2px 5px; white-space: nowrap; }
+  .rp-table th { background: #EEF0EA; font-weight: 500; }
+  .rp-table td.num, .rp-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .rp-table tr.strong td { font-weight: 700; background: #F2F5F0; }
+  .rp-table tr.sub td:first-child { padding-left: 14px; }
+  .rp-table td.half { background: #F6F6F2; }
+  .rp-table tr.total td { font-weight: 700; background: #EEF0EA; }
+  .rp-table td.closed { text-align: center; color: #777; letter-spacing: 1em; background: #F6F6F2; }
+  .rp-table .neg { color: #A9432E; }
+  .rp .chart .axis-label { font-size: 10px; }
+  .rp-note { font-size: 10px; color: #555; margin-top: 6px; }
+  @media print {
+    body { background: #fff !important; }
+    body > *:not(#print-area) { display: none !important; }
+    #print-area { display: block !important; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+
   @media (max-width: 600px) {
     .app { padding: 16px 12px 40px; }
     .app-header { flex-direction: column; align-items: stretch; }
@@ -268,7 +299,7 @@
         <h2 id="d-title"></h2>
         <button class="btn-ghost" id="d-next">次月 →</button>
       </div>
-      <button class="btn-text" id="d-jump" style="display:none;">今月に戻る</button>
+      <div class="btn-row"><button class="btn-text" id="d-jump" style="display:none;">今月に戻る</button><button class="btn-ghost" id="d-print" style="margin-left:auto;">🖨 この月を印刷(A4)</button></div>
       <div class="stat-grid" id="d-stats"></div>
     </div>
     <div class="card">
@@ -297,6 +328,7 @@
         <h2 id="y-title"></h2>
         <button class="btn-ghost" id="y-next">次年度 →</button>
       </div>
+      <div class="btn-row"><button class="btn-ghost" id="y-print" style="margin-left:auto;">🖨 この年度を印刷(A4横)</button></div>
       <div class="stat-grid" id="y-stats"></div>
     </div>
 
@@ -401,6 +433,8 @@
 
 <div class="toast" id="toast"></div>
 <div class="chart-tip" id="chart-tip"></div>
+<div id="print-area"></div>
+<style id="page-style">@page { size: A4 portrait; margin: 8mm; }</style>
 
 <div class="modal-overlay" id="detail-modal" style="display:none;">
   <div class="modal-box">
@@ -1879,6 +1913,92 @@ document.getElementById('logout-btn').addEventListener('click', async () => {
   try { localStorage.removeItem(PASSWORD_STORAGE_KEY); localStorage.removeItem(CACHE_KEY); } catch (e) { /* ignore */ }
   location.reload();
 });
+
+// ===== 印刷(A4 1枚にまとめる) =====
+const MM = 96 / 25.4; // 1mm あたりのピクセル
+function printReport(html, landscape) {
+  const pageW = (landscape ? 297 : 210) - 16, pageH = (landscape ? 210 : 297) - 16; // 余白8mmずつ
+  const wPx = Math.floor(pageW * MM), hPx = Math.floor(pageH * MM) - 4;
+  document.getElementById('page-style').textContent = '@page { size: A4 ' + (landscape ? 'landscape' : 'portrait') + '; margin: 8mm; }';
+  const area = document.getElementById('print-area');
+  area.innerHTML = `<div class="rp" style="display:inline-block; min-width:${wPx}px">${html}</div>`;
+  // 幅と高さを測って、はみ出す場合は縮小してA4 1枚に収める
+  area.style.cssText = 'display:block; position:absolute; left:-10000px; top:0;';
+  const rp = area.firstElementChild;
+  const w = rp.offsetWidth, h = rp.offsetHeight;
+  const scale = Math.min(1, wPx / w, hPx / h) * 0.98;
+  if (scale < 0.98) { rp.style.zoom = scale; }
+  area.style.cssText = '';
+  setTimeout(() => window.print(), 50);
+}
+window.addEventListener('afterprint', () => { document.getElementById('print-area').innerHTML = ''; });
+function rpBox(label, value, cls) { return `<div class="rp-box ${cls || ''}"><div class="l">${escapeHtml(label)}</div><div class="v">${value}</div></div>`; }
+function rpHead(title, sub) {
+  const t = todayStr().split('-').map(Number);
+  return `<div class="rp-head"><div class="rp-title">${escapeHtml(title)}</div><div class="rp-sub">${escapeHtml(sub)}<br>アクア農園　作成日 ${t[0]}年${t[1]}月${t[2]}日</div></div>`;
+}
+
+// 月間レポート(A4縦)
+function printMonth() {
+  const [from, to] = monthRange(dYear, dMonth);
+  const { rows, otherIds, mainPlace } = aquaRows(from, to);
+  const A = aggregate(rows);
+  const sellerSum = {};
+  rows.forEach(r => Object.keys(r.sellers).forEach(id => { sellerSum[id] = (sellerSum[id] || 0) + r.sellers[id]; }));
+  const sIds = Object.keys(sellerSum).filter(id => sellerSum[id] !== 0).sort((a, b) => sellerOrder(a) - sellerOrder(b));
+  const sum = f => rows.reduce((a, r) => a + r[f], 0);
+  const otherSum = id => rows.reduce((a, r) => a + (r.mobile ? 0 : (r.placeCash[id] || 0)), 0);
+  const [py, pm] = stepMonth(dYear, dMonth, -1);
+  const P = aggregate(aquaRows(...monthRange(py, pm)).rows);
+  const diff = A.total - P.total;
+  let html = rpHead(dYear + '年' + dMonth + '月　無人販売 売上報告', from.replace(/-/g, '/') + ' 〜 ' + to.replace(/-/g, '/'));
+  html += `<div class="rp-stats">${rpBox('単日合計の月計', yen(A.total))}${rpBox('アクア合計', yen(sum('aquaTotal')))}${rpBox('アクア', yen(sum('aquaNet')), 'accent')}${sIds.map(id => rpBox(sellerName(id), yen(sellerSum[id]), 'gold')).join('')}${otherIds.filter(id => otherSum(id)).map(id => rpBox(placeName(id), yen(otherSum(id)))).join('')}${rpBox('PayPay', yen(sum('paypay')))}</div>`;
+  html += `<div class="rp-stats">${rpBox('無人販売合計', yen(A.uTotal))}${rpBox('移動販売合計(' + A.mCount + '回)', yen(A.mTotal))}${rpBox('営業日数(無人)', A.days + '日')}${rpBox('休み', A.closed + '日')}${rpBox('1日平均(無人)', A.days ? yen(A.uTotal / A.days) : '-')}${rpBox('前月比(' + pm + '月)', P.total ? (diff >= 0 ? '+' : '−') + yen(Math.abs(diff)).replace('−', '') + ' (' + pct(diff / P.total * 100) + ')' : '-')}</div>`;
+  // 日ごとのグラフ
+  const days = daysInMonth(dYear, dMonth), dayKey = d => dYear + '-' + pad2(dMonth) + '-' + pad2(d);
+  const per = (d, mob) => rows.filter(r => r.date === dayKey(d) && r.mobile === mob).reduce((a, r) => a + r.total, 0);
+  const labels = [], uVals = [], mVals = [];
+  for (let d = 1; d <= days; d++) { labels.push(String(d)); uVals.push(per(d, false)); mVals.push(per(d, true)); }
+  html += `<div class="rp-section">日ごとの売上</div>` + barChart({ width: 700, height: 150, labels, stacked: true, series: [{ name: '無人販売', color: '#3A8A5C', values: uVals }, { name: '移動販売', color: '#5B7FD6', values: mVals }] });
+  // 日別の表
+  const v = n => n ? yen(n) : '';
+  const colsN = 4 + sIds.length + otherIds.length;
+  html += `<div class="rp-section">日別一覧</div><table class="rp-table"><thead><tr><th>日付</th><th class="num">アクア合計</th><th class="num">アクア</th>${sIds.map(id => `<th class="num">${escapeHtml(sellerName(id))}</th>`).join('')}${otherIds.map(id => `<th class="num">${escapeHtml(placeName(id))}</th>`).join('')}<th class="num">PayPay</th><th>備考</th><th class="num">単日合計</th></tr></thead><tbody>${
+    rows.map(r => (r.closed && !r.total && !r.friends)
+      ? `<tr><td>${fmtMD(r.date)}</td><td class="closed" colspan="${colsN}">休み</td><td></td></tr>`
+      : `<tr><td>${fmtMD(r.date)}${r.mobile ? ' <span style="color:#555">移動' + (r.events.length ? '・' + escapeHtml(r.events.join('・')) : '') + '</span>' : ''}</td><td class="num">${v(r.aquaTotal)}</td><td class="num ${r.aquaNet < 0 ? 'neg' : ''}">${v(r.aquaNet)}</td>${sIds.map(id => `<td class="num">${v(r.sellers[id])}</td>`).join('')}${otherIds.map(id => `<td class="num">${r.mobile ? '' : v(r.placeCash[id])}</td>`).join('')}<td class="num">${v(r.paypay)}</td><td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.notes.join(' / '))}</td><td class="num"><b>${yen(r.total)}</b></td></tr>`).join('')
+  }</tbody><tfoot><tr class="total"><td>合計</td><td class="num">${yen(sum('aquaTotal'))}</td><td class="num">${yen(sum('aquaNet'))}</td>${sIds.map(id => `<td class="num">${yen(sellerSum[id])}</td>`).join('')}${otherIds.map(id => `<td class="num">${yen(otherSum(id))}</td>`).join('')}<td class="num">${yen(sum('paypay'))}</td><td></td><td class="num">${yen(sum('total'))}</td></tr></tfoot></table>`;
+  html += `<div class="rp-note">アクア=アクア合計−知り合いの売上(PayPay・幸福駅は含まない)。単日合計=現金+幸福駅+PayPay。</div>`;
+  printReport(html, false);
+}
+
+// 年間レポート(A4横)
+function printYear() {
+  const { months, from, to } = fyRange(yFY);
+  const { rows, otherIds } = aquaRows(from, to);
+  const monthAgg = {};
+  months.forEach(m => { monthAgg[m] = aggregate(rows.filter(r => r.date.slice(0, 7) === m)); });
+  const aggOf = list => aggregate(rows.filter(r => list.indexOf(r.date.slice(0, 7)) !== -1));
+  const H1 = aggOf(months.slice(0, 6)), H2 = aggOf(months.slice(6)), FY = aggregate(rows);
+  const mLabel = m => parseInt(m.slice(5), 10) + '月';
+  let html = rpHead(yFY + '年度　無人販売 年間売上報告', yFY + '年3月 〜 ' + (yFY + 1) + '年2月');
+  html += `<div class="rp-stats">${rpBox('年度の売上合計', yen(FY.total))}${rpBox('無人販売合計', yen(FY.uTotal))}${rpBox('移動販売合計(' + FY.mCount + '回)', yen(FY.mTotal))}${rpBox('アクア(無人+移動)', yen(FY.uAqua + FY.mAqua), 'accent')}${rpBox('知り合い合計', yen(Object.values(FY.sellers).reduce((a, b) => a + b, 0)), 'gold')}${rpBox('PayPay', yen(FY.uPaypay + FY.mPaypay))}${rpBox('営業日数(無人)', FY.days + '日')}${rpBox('1日平均(無人)', FY.days ? yen(FY.uTotal / FY.days) : '-')}</div>`;
+  // 月ごとのグラフと曜日別を横に並べる
+  const order = ['月', '火', '水', '木', '金', '土', '日'];
+  const wd = order.map(w => { const u = rows.filter(r => !r.mobile && weekdayOf(r.date) === w && r.total); return u.length ? u.reduce((a, r) => a + r.total, 0) / u.length : 0; });
+  html += `<div style="display:flex; gap:14px;"><div style="flex:2;"><div class="rp-section">月ごとの売上</div>${barChart({ width: 680, height: 170, labels: months.map(mLabel), stacked: true, series: [{ name: '無人販売', color: '#3A8A5C', values: months.map(m => monthAgg[m].uTotal) }, { name: '移動販売', color: '#5B7FD6', values: months.map(m => monthAgg[m].mTotal) }] })}</div>
+    <div style="flex:1;"><div class="rp-section">曜日ごとの1日平均(無人)</div>${barChart({ width: 340, height: 170, labels: order, series: [{ name: '1日平均', color: '#3A8A5C', values: wd }] })}</div></div>`;
+  const lines = lineDefs(Object.values(monthAgg), otherIds);
+  const cols = [...months.slice(0, 6).map(m => ({ label: mLabel(m), a: monthAgg[m] })), { label: '上期', a: H1, half: true }, ...months.slice(6).map(m => ({ label: mLabel(m), a: monthAgg[m] })), { label: '下期', a: H2, half: true }, { label: '通期', a: FY, half: true }];
+  html += `<div class="rp-section">月別集計</div><table class="rp-table"><thead><tr><th>項目</th>${cols.map(c => `<th class="num">${c.label}</th>`).join('')}</tr></thead><tbody>${
+    lines.map(l => `<tr class="${l.cls === 'row-strong' ? 'strong' : 'sub'}"><td>${escapeHtml(l.label)}</td>${cols.map(c => { const x = l.get(c.a); return `<td class="num ${c.half ? 'half' : ''} ${x < 0 ? 'neg' : ''}">${x ? yen(x) : '-'}</td>`; }).join('')}</tr>`).join('')
+  }<tr><td>営業日数(無人)</td>${cols.map(c => `<td class="num ${c.half ? 'half' : ''}">${c.a.days ? c.a.days + '日' : '-'}</td>`).join('')}</tr>
+  <tr><td>1日平均(無人)</td>${cols.map(c => `<td class="num ${c.half ? 'half' : ''}">${c.a.days ? yen(c.a.uTotal / c.a.days) : '-'}</td>`).join('')}</tr></tbody></table>`;
+  html += `<div class="rp-note">アクア=アクア合計−知り合いの売上(PayPay・幸福駅は含まない)。年度は3月〜翌年2月。</div>`;
+  printReport(html, true);
+}
+document.getElementById('d-print').addEventListener('click', printMonth);
+document.getElementById('y-print').addEventListener('click', printYear);
 
 // ===== 起動 =====
 document.getElementById('refresh-data-btn').addEventListener('click', async () => {
