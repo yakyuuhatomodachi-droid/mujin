@@ -1,0 +1,1604 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>アクア農園 無人販売管理</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
+
+  :root {
+    --bg: #F2F1E7;
+    --surface: #FFFFFF;
+    --border: #DBD7C6;
+    --text-primary: #24291F;
+    --text-secondary: #6E6C5E;
+    --accent: #33513F;
+    --accent-light: #E7EDE6;
+    --gold: #B08A2E;
+    --gold-light: #F3E9D2;
+    --danger: #A9432E;
+    --danger-light: #F5E4DF;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Zen Kaku Gothic New', -apple-system, 'Hiragino Sans', 'Yu Gothic', sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    line-height: 1.6;
+  }
+  .app { max-width: 1400px; margin: 0 auto; padding: 24px 24px 60px; }
+  .app-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .app-header h1 { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
+  .app-header p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+  #refresh-data-btn { flex-shrink: 0; white-space: nowrap; }
+  #refresh-data-btn.is-loading { opacity: 0.6; pointer-events: none; }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .tab-btn {
+    appearance: none; border: none; background: none; font-family: inherit; font-size: 15px; font-weight: 500;
+    color: var(--text-secondary); padding: 10px 16px; cursor: pointer; border-bottom: 2px solid transparent;
+    margin-bottom: -1px; white-space: nowrap;
+  }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-btn:hover:not(.active) { color: var(--text-primary); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; font-weight: 700; margin: 0 0 14px; }
+  .card h3 { font-size: 14px; font-weight: 700; margin: 18px 0 8px; }
+  .hint { font-size: 12px; color: var(--text-secondary); }
+
+  .form-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .field { flex: 1; min-width: 140px; display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 12px; color: var(--text-secondary); }
+  .field input, .field select, .cell-input, .cell-select {
+    font-family: inherit; font-size: 15px; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--bg); color: var(--text-primary); width: 100%;
+  }
+  .field input:focus, .field select:focus, .cell-input:focus, .cell-select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .cell-input { padding: 6px 8px; font-size: 15px; min-width: 70px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .btn { font-family: inherit; font-size: 14px; font-weight: 500; padding: 9px 16px; border-radius: 6px; border: none; cursor: pointer; }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #294032; }
+  .btn-ghost { font-family: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px; background: none; border: 1px solid var(--border); color: var(--text-primary); cursor: pointer; }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--text-secondary); }
+  .btn-ghost:disabled { opacity: 0.3; cursor: default; }
+  .btn-ghost.btn-danger { color: var(--danger); border-color: var(--danger); }
+  .btn-ghost.btn-danger:hover { background: var(--danger); color: #fff; }
+  .btn-text { background: none; border: none; color: var(--accent); font-size: 13px; cursor: pointer; padding: 4px 8px; font-family: inherit; }
+  .btn-text:hover { text-decoration: underline; }
+  .btn-text-danger { background: none; border: none; color: var(--danger); font-size: 13px; cursor: pointer; padding: 4px 8px; font-family: inherit; }
+  .btn-text-danger:hover { text-decoration: underline; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+  .error-text { color: var(--danger); font-size: 12px; margin: -4px 0 8px; display: none; }
+  .error-text.show { display: block; }
+  .warn-text { color: var(--danger); font-size: 12px; }
+  .empty-state { text-align: center; padding: 26px 10px; color: var(--text-secondary); font-size: 14px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-size: 12px; color: var(--text-secondary); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .row-actions { white-space: nowrap; text-align: right; }
+  .nowrap-table th, .nowrap-table td { white-space: nowrap; }
+  .stock-table .cell-input { width: 90px; min-width: 0; }
+
+  /* 固定表示つきの表(見出し行・先頭列・合計列) */
+  .scroll-wrap { overflow: auto; max-height: 70vh; border: 1px solid var(--border); border-radius: 8px; }
+  .fixed-table { border-collapse: separate; border-spacing: 0; font-size: 13px; width: max-content; min-width: 100%; table-layout: fixed; }
+  .fixed-table th, .fixed-table td { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 6px 10px; white-space: nowrap; background: var(--surface); }
+  .fixed-table thead th { position: sticky; top: 0; z-index: 3; background: var(--bg); }
+  .fixed-table .col-first { position: sticky; left: 0; z-index: 2; }
+  .fixed-table thead .col-first { z-index: 5; }
+  .fixed-table .col-last { position: sticky; right: 0; z-index: 2; background: var(--gold-light); font-weight: 700; }
+  .fixed-table thead .col-last { z-index: 5; background: var(--gold-light); }
+  .fixed-table tr.row-strong td { font-weight: 700; background: var(--accent-light); }
+  .fixed-table tr.row-strong td.col-last { background: var(--gold-light); }
+  .fixed-table tr.row-sub td.col-first { padding-left: 24px; color: var(--text-secondary); }
+  .fixed-table td.col-half { background: var(--bg); font-weight: 500; }
+  .fixed-table tr.row-total td { font-weight: 700; background: var(--bg); }
+  .fixed-table td.neg { color: var(--danger); }
+  .fixed-table tr.clickable { cursor: pointer; }
+  .fixed-table tr.clickable:hover td { background: var(--accent-light); }
+
+  .zoom-control { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+  .zoom-control span { font-size: 13px; min-width: 42px; text-align: center; }
+
+  .stat-grid { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 0 0; }
+  .stat-box { flex: 1; min-width: 140px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+  .stat-box .stat-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .stat-box .stat-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat-box.accent .stat-value { color: var(--accent); }
+  .stat-box.gold .stat-value { color: var(--gold); }
+
+  .nav-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  .nav-row h2 { margin: 0; text-align: center; }
+
+  .total-preview { font-size: 15px; font-weight: 700; margin: 6px 0 12px; }
+  .extra-row { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 8px; flex-wrap: wrap; }
+  .extra-row .field { min-width: 110px; }
+  .section-label { font-size: 13px; font-weight: 700; margin: 14px 0 6px; }
+
+  .seller-block { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px; }
+  .seller-block:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+  .seller-title { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .seller-title .name { font-size: 16px; font-weight: 700; }
+  .seller-title .amount { font-size: 18px; font-weight: 700; color: var(--gold); }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; background: var(--accent-light); color: var(--accent); margin-right: 4px; }
+  .pill.gray { background: var(--bg); color: var(--text-secondary); }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(36, 41, 31, 0.45); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 1000; }
+  .modal-box { background: var(--surface); border-radius: var(--radius); width: 100%; max-width: 520px; max-height: 85vh; overflow-y: auto; padding: 20px; }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .modal-header h3 { margin: 0; font-size: 16px; font-weight: 700; }
+  .modal-close { background: none; border: none; font-size: 22px; line-height: 1; color: var(--text-secondary); cursor: pointer; padding: 4px 8px; }
+  .detail-row { padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-title { font-weight: 700; font-size: 14px; }
+  .detail-sub { font-size: 13px; color: var(--text-secondary); }
+
+  .password-gate { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 2000; }
+  .password-gate-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px 28px; max-width: 320px; width: 100%; text-align: center; }
+  .password-gate-box h2 { font-size: 16px; font-weight: 700; margin: 0 0 16px; }
+  .password-gate-box input { width: 100%; font-family: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); margin-bottom: 10px; }
+  .password-gate-box button { width: 100%; }
+
+  .toast { position: fixed; right: 16px; bottom: 16px; background: var(--text-primary); color: #fff; font-size: 13px; padding: 10px 14px; border-radius: 8px; z-index: 4000; opacity: 0; transform: translateY(8px); transition: opacity .2s, transform .2s; pointer-events: none; max-width: 80vw; }
+  .toast.show { opacity: 0.94; transform: translateY(0); }
+
+  @media (max-width: 600px) {
+    .app { padding: 16px 12px 40px; }
+    .app-header { flex-direction: column; align-items: stretch; }
+    #refresh-data-btn { align-self: flex-start; }
+    .card { padding: 14px; }
+    .tab-btn { padding: 10px 10px; font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="password-gate" id="password-gate">
+  <div class="password-gate-box">
+    <h2>合言葉を入力してください</h2>
+    <input type="password" id="password-gate-input" placeholder="合言葉" autocomplete="off">
+    <div class="error-text" id="password-gate-error">合言葉が違います</div>
+    <button class="btn btn-primary" id="password-gate-submit">入る</button>
+  </div>
+</div>
+
+<div class="app">
+  <div class="app-header">
+    <div>
+      <h1>アクア農園 無人販売管理</h1>
+      <p>無人販売・移動販売の売上と、知り合いの品物の販売数を記録します</p>
+    </div>
+    <button type="button" class="btn-ghost" id="refresh-data-btn">↻ 最新に更新</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="input">売上入力</button>
+    <button class="tab-btn" data-tab="stock">知り合いの品出し</button>
+    <button class="tab-btn" data-tab="daily">日別一覧</button>
+    <button class="tab-btn" data-tab="sellers">知り合い集計</button>
+    <button class="tab-btn" data-tab="summary">年度集計</button>
+    <button class="tab-btn" data-tab="master">マスタ</button>
+  </div>
+
+  <!-- 売上入力 -->
+  <div class="panel active" id="panel-input">
+    <div class="card" id="setup-card" style="display:none;">
+      <h2>はじめに</h2>
+      <p class="hint" style="margin-top:0;">まだ販売場所が登録されていません。下のボタンで「無人販売所」「幸福駅」「移動販売」の3か所を作成します(名前はあとからマスタで変えられます)。過去のデータを取り込む場合は、マスタの「バックアップから復元」から取り込みファイルを選んでください。</p>
+      <button class="btn btn-primary" id="setup-default-btn">販売場所を3か所作成する</button>
+    </div>
+    <div class="card">
+      <h2 id="s-heading">売上を記録</h2>
+      <div class="form-row">
+        <div class="field"><label for="s-date">日付</label><input id="s-date" type="date"></div>
+        <div class="field"><label for="s-place">販売場所</label><select id="s-place"></select></div>
+        <div class="field" id="s-event-field" style="display:none;"><label for="s-event">催し名</label><input id="s-event" type="text" placeholder="例: あさぎりマルシェ"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label for="s-cash">現金(円)</label><input id="s-cash" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
+        <div class="field" id="s-paypay-field"><label for="s-paypay">PayPay(円)</label><input id="s-paypay" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
+      </div>
+      <div id="s-extras-wrap">
+        <div class="section-label">知り合いの売上を金額で入れる場合(ゲスト・金額しか分からない分)</div>
+        <div class="hint" style="margin-bottom:8px;">個数で管理している分は「知り合いの品出し」タブで入力すると自動で計算されます。ここには入れないでください</div>
+        <div id="s-extras"></div>
+        <button type="button" class="btn-ghost" id="s-add-extra">+ 金額の行を追加</button>
+      </div>
+      <div class="form-row" style="margin-top:12px;">
+        <div class="field"><label for="s-note">備考</label><input id="s-note" type="text" placeholder="例: 金券500円1枚"></div>
+      </div>
+      <div class="total-preview" id="s-total-preview"></div>
+      <div class="error-text" id="s-error">日付と販売場所を選び、金額を入力してください</div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="s-submit">記録する</button>
+        <button class="btn-ghost" id="s-cancel" style="display:none;">編集をやめる</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>最近の記録</h2>
+      <div id="recent-sales"></div>
+    </div>
+  </div>
+
+  <!-- 知り合いの品出し -->
+  <div class="panel" id="panel-stock">
+    <div class="card">
+      <h2 id="k-heading">知り合いの品物を記録</h2>
+      <p class="hint" style="margin-top:0;" id="k-howto"></p>
+      <div class="form-row">
+        <div class="field"><label for="k-date">日付</label><input id="k-date" type="date"></div>
+        <div class="field"><label for="k-place">販売場所</label><select id="k-place"></select></div>
+        <div class="field" id="k-event-field" style="display:none;"><label for="k-event">催し名</label><input id="k-event" type="text" placeholder="例: あさぎりマルシェ"></div>
+        <div class="field"><label for="k-seller">出品者</label><select id="k-seller"></select></div>
+      </div>
+      <div id="k-lines"></div>
+      <div class="form-row" style="margin-top:12px;">
+        <div class="field"><label for="k-note">備考</label><input id="k-note" type="text"></div>
+      </div>
+      <div class="total-preview" id="k-total-preview"></div>
+      <div class="error-text" id="k-error">日付・販売場所・出品者を選び、個数を1つ以上入力してください</div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="k-submit">記録する</button>
+        <button class="btn-ghost" id="k-cancel" style="display:none;">編集をやめる</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>いま置いてある数</h2>
+      <div id="k-current-stock"></div>
+    </div>
+  </div>
+
+  <!-- 日別一覧 -->
+  <div class="panel" id="panel-daily">
+    <div class="card">
+      <div class="nav-row">
+        <button class="btn-ghost" id="d-prev">← 前月</button>
+        <h2 id="d-title"></h2>
+        <button class="btn-ghost" id="d-next">次月 →</button>
+      </div>
+      <button class="btn-text" id="d-jump" style="display:none;">今月に戻る</button>
+      <div class="stat-grid" id="d-stats"></div>
+    </div>
+    <div class="card">
+      <div class="btn-row" style="margin-bottom:10px;">
+        <span class="hint">行を押すと、その日の記録の確認・編集・削除ができます</span>
+        <div class="zoom-control">
+          <button type="button" class="btn-ghost zoom-out">−</button><span class="zoom-label">100%</span><button type="button" class="btn-ghost zoom-in">＋</button><button type="button" class="btn-text zoom-reset">リセット</button>
+        </div>
+      </div>
+      <div class="scroll-wrap"><div class="zoom-target" id="d-table"></div></div>
+    </div>
+  </div>
+
+  <!-- 知り合い集計 -->
+  <div class="panel" id="panel-sellers">
+    <div class="card">
+      <div class="nav-row">
+        <button class="btn-ghost" id="p-prev">← 前月</button>
+        <h2 id="p-title"></h2>
+        <button class="btn-ghost" id="p-next">次月 →</button>
+      </div>
+      <button class="btn-text" id="p-jump" style="display:none;">今月に戻る</button>
+      <p class="hint">売れた数は、残りを数えた日(移動販売はその日)の売上として計上されます。</p>
+    </div>
+    <div class="card"><div id="p-body"></div></div>
+  </div>
+
+  <!-- 年度集計 -->
+  <div class="panel" id="panel-summary">
+    <div class="card">
+      <div class="nav-row">
+        <button class="btn-ghost" id="y-prev">← 前年度</button>
+        <h2 id="y-title"></h2>
+        <button class="btn-ghost" id="y-next">次年度 →</button>
+      </div>
+      <div class="stat-grid" id="y-stats"></div>
+    </div>
+    <div class="card">
+      <div class="btn-row" style="margin-bottom:10px;">
+        <span class="hint">年度は3月〜翌年2月です</span>
+        <div class="zoom-control">
+          <button type="button" class="btn-ghost zoom-out">−</button><span class="zoom-label">100%</span><button type="button" class="btn-ghost zoom-in">＋</button><button type="button" class="btn-text zoom-reset">リセット</button>
+        </div>
+      </div>
+      <div class="scroll-wrap"><div class="zoom-target" id="y-table"></div></div>
+    </div>
+  </div>
+
+  <!-- マスタ -->
+  <div class="panel" id="panel-master">
+    <div class="card">
+      <h2>販売場所</h2>
+      <div id="m-places"></div>
+      <div class="form-row" style="margin-top:14px; align-items:flex-end;">
+        <div class="field"><label for="m-place-name">新しい販売場所</label><input id="m-place-name" type="text" placeholder="例: ○○直売所"></div>
+        <div class="field" style="max-width:170px;"><label for="m-place-type">種類</label>
+          <select id="m-place-type"><option value="unmanned">無人販売</option><option value="mobile">移動販売</option></select></div>
+        <div class="field" style="max-width:150px;"><label for="m-place-paypay">PayPay</label>
+          <select id="m-place-paypay"><option value="1">あり</option><option value="0">なし</option></select></div>
+        <div class="field" style="max-width:190px;"><label for="m-place-sellers">知り合いの品物</label>
+          <select id="m-place-sellers"><option value="1">置いている</option><option value="0">置いていない</option></select></div>
+        <button type="button" class="btn btn-primary" id="m-place-add">+ 追加</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>出品者(知り合い)と品目</h2>
+      <p class="hint" style="margin-top:0;">品目の値段は税込みで入力してください。値段を変えても、過去の記録の金額は変わりません。</p>
+      <div id="m-sellers"></div>
+      <div class="form-row" style="margin-top:14px; align-items:flex-end;">
+        <div class="field" style="max-width:260px;"><label for="m-seller-name">新しい出品者</label><input id="m-seller-name" type="text" placeholder="例: 三宅さん"></div>
+        <button type="button" class="btn btn-primary" id="m-seller-add">+ 追加</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>バックアップ・復元</h2>
+      <p class="hint" style="margin-top:0;">すべてのデータを1つのファイルに保存できます。過去データの取り込みファイルも「バックアップから復元」で読み込みます。</p>
+      <div class="btn-row">
+        <button type="button" class="btn btn-primary" id="backup-download-btn">バックアップをダウンロード</button>
+        <button type="button" class="btn-ghost" id="backup-restore-btn">バックアップから復元</button>
+        <input type="file" id="backup-restore-input" accept="application/json,.json" style="display:none;">
+      </div>
+    </div>
+    <div class="card">
+      <h2>ログアウト</h2>
+      <p class="hint" style="margin-top:0;">この端末に保存された合言葉を消します。共用の端末で使ったときに押してください。</p>
+      <button type="button" class="btn-ghost" id="logout-btn">ログアウト</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="detail-modal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header"><h3 id="detail-title"></h3><button class="modal-close" data-close="detail-modal" aria-label="閉じる">×</button></div>
+    <div id="detail-body"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="seller-modal" style="display:none;">
+  <div class="modal-box" style="max-width:600px;">
+    <div class="modal-header"><h3>出品者を編集</h3><button class="modal-close" data-close="seller-modal" aria-label="閉じる">×</button></div>
+    <div class="field" style="margin-bottom:12px;"><label for="sm-name">名前</label><input id="sm-name" type="text"></div>
+    <div class="section-label">品目と値段(税込)</div>
+    <div id="sm-items"></div>
+    <button type="button" class="btn-ghost" id="sm-add-item" style="margin-top:6px;">+ 品目を追加</button>
+    <div class="error-text" id="sm-error" style="margin-top:10px;">名前を入力してください</div>
+    <button type="button" class="btn btn-primary" id="sm-save" style="width:100%; margin-top:16px;">保存する</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="save-status-modal" style="display:none; z-index:3500;">
+  <div class="modal-box" style="max-width: 360px; text-align: center;">
+    <div id="save-status-icon" style="font-size: 32px; margin-bottom: 10px;"></div>
+    <div id="save-status-message" style="font-size: 15px;"></div>
+    <button class="btn btn-primary" id="save-status-ok" style="margin-top: 16px; width: 100%;">OK</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="progress-modal" style="display:none; z-index:3600;">
+  <div class="modal-box" style="max-width: 360px; text-align: center;">
+    <div style="font-size:15px; font-weight:700; margin-bottom:8px;">保存しています</div>
+    <div id="progress-message" style="font-size:14px;"></div>
+    <div class="hint" style="margin-top:8px;">終わるまで画面を閉じないでください</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="confirm-modal" style="display:none; z-index:3000;">
+  <div class="modal-box">
+    <div class="modal-header"><h3>確認</h3></div>
+    <div id="confirm-modal-message" style="white-space:pre-wrap;"></div>
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+      <button class="btn-ghost" id="confirm-modal-cancel">キャンセル</button>
+      <button class="btn btn-primary" id="confirm-modal-ok">削除する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== 設定 =====
+// Googleスプレッドシート側(GAS)のウェブアプリURLをここに貼り付けます
+const SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzFYs1rRrNAwjXLfFSmz47PuBGfPWG8ksxGBmSI-0pPsmsij6hjJM1DNJo3IekpmOksnQ/exec';
+
+// 同じGitHub Pagesの販売管理アプリとブラウザ保存が混ざらないよう、専用の名前を使う
+const PASSWORD_STORAGE_KEY = 'mujin_pw';
+const CACHE_KEY = 'mujin_cache_v1';
+const ZOOM_KEY = 'mujin_zoom';
+
+// ===== 小さな道具 =====
+function escapeHtml(str) {
+  if (str === undefined || str === null) return '';
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function yen(n) { return (n < 0 ? '−¥' : '¥') + Math.abs(Math.round(n || 0)).toLocaleString('ja-JP'); }
+function pad2(n) { return String(n).padStart(2, '0'); }
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+function parseDateOnly(s) { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
+function weekdayOf(s) { return ['日','月','火','水','木','金','土'][parseDateOnly(s).getUTCDay()]; }
+function daysInMonth(y, m) { return new Date(Date.UTC(y, m, 0)).getUTCDate(); } // m は1〜12
+function fmtMD(s) { const [, m, d] = s.split('-').map(Number); return m + '/' + d + '(' + weekdayOf(s) + ')'; }
+// 年度(3月始まり)
+function fiscalYearOf(dateStr) { const [y, m] = dateStr.split('-').map(Number); return m >= 3 ? y : y - 1; }
+function fiscalMonths(fy) {
+  const list = [];
+  for (let i = 0; i < 12; i++) { const m = 3 + i; list.push(m <= 12 ? fy + '-' + pad2(m) : (fy + 1) + '-' + pad2(m - 12)); }
+  return list;
+}
+function toNum(v) {
+  if (v === undefined || v === null) return 0;
+  const n = parseFloat(String(v).replace(/[,，\s]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+function inputNum(el) { // 空欄なら null
+  const s = String(el.value).trim();
+  if (s === '') return null;
+  const n = parseFloat(s.replace(/[,，]/g, ''));
+  return isNaN(n) ? null : n;
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+function showSaveModal(msg, ok) {
+  document.getElementById('save-status-icon').textContent = ok ? '✅' : '⚠️';
+  document.getElementById('save-status-message').textContent = msg;
+  document.getElementById('save-status-modal').style.display = 'flex';
+}
+document.getElementById('save-status-ok').addEventListener('click', () => { document.getElementById('save-status-modal').style.display = 'none'; });
+
+function showConfirm(message, okLabel) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('confirm-modal');
+    const okBtn = document.getElementById('confirm-modal-ok');
+    const cancelBtn = document.getElementById('confirm-modal-cancel');
+    document.getElementById('confirm-modal-message').textContent = message;
+    okBtn.textContent = okLabel || '削除する';
+    okBtn.style.background = okLabel ? '' : 'var(--danger)';
+    modal.style.display = 'flex';
+    function done(r) {
+      modal.style.display = 'none';
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      modal.removeEventListener('click', onOverlay);
+      resolve(r);
+    }
+    function onOk() { done(true); }
+    function onCancel() { done(false); }
+    function onOverlay(e) { if (e.target === modal) done(false); }
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    modal.addEventListener('click', onOverlay);
+  });
+}
+
+document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => { document.getElementById(b.dataset.close).style.display = 'none'; }));
+['detail-modal', 'seller-modal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', e => { if (e.target.id === id) e.target.style.display = 'none'; });
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  ['detail-modal', 'seller-modal', 'save-status-modal'].forEach(id => { document.getElementById(id).style.display = 'none'; });
+});
+
+// ===== 合言葉 =====
+function getStoredPassword() { try { return localStorage.getItem(PASSWORD_STORAGE_KEY) || ''; } catch (e) { return ''; } }
+function showPasswordGate(showError) {
+  document.getElementById('password-gate').style.display = 'flex';
+  document.getElementById('password-gate-input').value = '';
+  document.getElementById('password-gate-error').classList.toggle('show', !!showError);
+}
+(function initPasswordGate() {
+  const gate = document.getElementById('password-gate');
+  if (getStoredPassword()) gate.style.display = 'none';
+  const input = document.getElementById('password-gate-input');
+  const errorEl = document.getElementById('password-gate-error');
+  const submitBtn = document.getElementById('password-gate-submit');
+  async function trySubmit() {
+    const pw = input.value;
+    if (!pw) return;
+    submitBtn.disabled = true;
+    try {
+      const res = await fetch(SHEET_API_URL + '?action=check&pw=' + encodeURIComponent(pw));
+      const data = await res.json();
+      if (data && data.ok === true) {
+        try { localStorage.setItem(PASSWORD_STORAGE_KEY, pw); } catch (e) { /* ignore */ }
+        location.reload();
+        return;
+      }
+      errorEl.textContent = '合言葉が違います';
+      errorEl.classList.add('show');
+    } catch (e) {
+      errorEl.textContent = '確認できませんでした。通信状況をご確認ください';
+      errorEl.classList.add('show');
+    }
+    submitBtn.disabled = false;
+  }
+  submitBtn.addEventListener('click', trySubmit);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') trySubmit(); });
+})();
+
+// ===== スプレッドシートとの通信(すべてGET) =====
+function pwParam() { return '&pw=' + encodeURIComponent(getStoredPassword()); }
+function handleUnauthorized() {
+  try { localStorage.removeItem(PASSWORD_STORAGE_KEY); } catch (e) { /* ignore */ }
+  showPasswordGate(true); // 画面のデータは消さない
+  const err = new Error('unauthorized');
+  err.unauthorized = true;
+  return err;
+}
+async function sheetFetchJson(query) {
+  const res = await fetch(SHEET_API_URL + '?' + query + pwParam());
+  if (!res.ok) throw new Error('通信に失敗しました(HTTP ' + res.status + ')');
+  const data = await res.json();
+  if (data && data.error === 'unauthorized') throw handleUnauthorized();
+  return data;
+}
+const MAX_QUERY_LEN = 5000; // 1回の通信で送る文字数の上限(長すぎると失敗するため)
+const sheetStorage = {
+  async set(key, value) {
+    const data = await sheetFetchJson('action=set&key=' + encodeURIComponent(key) + '&value=' + encodeURIComponent(value));
+    if (!data.success) throw new Error('保存に失敗しました');
+  },
+  async del(key) {
+    const data = await sheetFetchJson('action=delete&key=' + encodeURIComponent(key));
+    if (!data.success) throw new Error('削除に失敗しました');
+  },
+  async getAll() {
+    const data = await sheetFetchJson('action=getAll');
+    if (!Array.isArray(data.rows)) throw new Error('データの形が正しくありません');
+    return data.rows;
+  },
+  // 何件かずつまとめて送る。onProgress(済んだ件数, 全件数)
+  async batch(action, items, onProgress) {
+    let i = 0;
+    while (i < items.length) {
+      const chunk = [];
+      while (i < items.length) {
+        const next = chunk.concat([items[i]]);
+        if (chunk.length > 0 && encodeURIComponent(JSON.stringify(next)).length > MAX_QUERY_LEN) break;
+        chunk.push(items[i]);
+        i++;
+      }
+      const data = await sheetFetchJson('action=' + action + '&value=' + encodeURIComponent(JSON.stringify(chunk)));
+      if (!data.success) throw new Error('保存に失敗しました');
+      if (onProgress) onProgress(i, items.length);
+    }
+  }
+};
+
+// ===== データ =====
+let places = [];   // place_<id>
+let sellers = [];  // seller_<id>
+let sales = [];    // sale_<id>   売上(回収した金額)
+let stocks = [];   // stock_<id>  知り合いの品出し・残数
+let loadedOnce = false;
+
+const PREFIX = { place: 'place_', seller: 'seller_', sale: 'sale_', stock: 'stock_' };
+function keyOf(kind, rec) { return PREFIX[kind] + rec.id; }
+
+async function loadData() {
+  try {
+    const rows = await sheetStorage.getAll();
+    const np = [], ns = [], nsa = [], nst = [];
+    rows.forEach(([key, value]) => {
+      if (typeof key !== 'string' || !value) return;
+      let obj;
+      try { obj = JSON.parse(value); } catch (e) { console.error('parse error', key); return; }
+      if (key.indexOf(PREFIX.place) === 0) np.push(obj);
+      else if (key.indexOf(PREFIX.seller) === 0) ns.push(obj);
+      else if (key.indexOf(PREFIX.sale) === 0) nsa.push(obj);
+      else if (key.indexOf(PREFIX.stock) === 0) nst.push(obj);
+    });
+    places = np; sellers = ns; sales = nsa; stocks = nst;
+    sortMasters();
+    loadedOnce = true;
+    saveToCache();
+    return true;
+  } catch (e) {
+    console.error(e);
+    // 失敗したときは画面のデータをそのまま残す(空で上書きしない)
+    if (!e.unauthorized) showToast('データの読み込みに失敗しました: ' + e.message);
+    return false;
+  }
+}
+function sortMasters() {
+  places.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  sellers.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+}
+function saveToCache() {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ places, sellers, sales, stocks, loadedOnce, cachedAt: Date.now() })); } catch (e) { /* ignore */ }
+}
+function loadFromCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    if (!c) return false;
+    places = c.places || []; sellers = c.sellers || []; sales = c.sales || []; stocks = c.stocks || [];
+    sortMasters();
+    return true;
+  } catch (e) { return false; }
+}
+async function saveRecord(kind, rec) {
+  try { await sheetStorage.set(keyOf(kind, rec), JSON.stringify(rec)); saveToCache(); return true; }
+  catch (e) { if (!e.unauthorized) showToast('保存に失敗しました。もう一度お試しください'); return false; }
+}
+async function deleteRecord(kind, id) {
+  try { await sheetStorage.del(PREFIX[kind] + id); saveToCache(); return true; }
+  catch (e) { if (!e.unauthorized) showToast('削除に失敗しました。もう一度お試しください'); return false; }
+}
+
+function placeById(id) { return places.find(p => p.id === id); }
+function sellerById(id) { return sellers.find(s => s.id === id); }
+function placeName(id) { const p = placeById(id); return p ? p.name : '(削除済みの場所)'; }
+function sellerName(id) { const s = sellerById(id); return s ? s.name : '(削除済みの出品者)'; }
+function isMobile(placeId) { const p = placeById(placeId); return !!(p && p.type === 'mobile'); }
+
+// ===== 計算(画面・集計のすべてでこの関数を使う) =====
+// 知り合いの品物:記録を日付順に追いかけ、各記録の「売れた数」と金額を出す
+//  無人販売: 売れた数 = 前回の在庫 − 今の残り。その後 在庫 = 残り − 引き上げ + 補充
+//  移動販売: 売れた数 = 持って行った数 − 残った数(在庫は持ち越さない)
+function recOrder(a, b) {
+  if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+  return (a.createdAt || 0) - (b.createdAt || 0);
+}
+function computeStock(excludeId) {
+  const level = {};     // place|seller|item -> 在庫
+  const results = {};   // stockId -> { lines:[...], amount, sold }
+  const sorted = stocks.filter(r => r.id !== excludeId).slice().sort(recOrder);
+  sorted.forEach(r => {
+    const out = { lines: [], amount: 0, sold: 0, warn: false };
+    (r.lines || []).forEach(l => {
+      const key = r.placeId + '|' + r.sellerId + '|' + l.itemId;
+      let prev = null, sold = 0, after = null;
+      if (r.mode === 'mobile') {
+        if (l.taken !== null && l.taken !== undefined) sold = toNum(l.taken) - toNum(l.left);
+      } else {
+        prev = level[key] || 0;
+        let cur = prev;
+        if (l.remain !== null && l.remain !== undefined) { sold = prev - toNum(l.remain); cur = toNum(l.remain); }
+        cur = cur - toNum(l.removed) + toNum(l.added);
+        level[key] = cur;
+        after = cur;
+      }
+      const amount = sold * toNum(l.price);
+      if (sold < 0) out.warn = true;
+      out.lines.push({ itemId: l.itemId, name: l.name, price: toNum(l.price), prev, sold, after, amount });
+      out.amount += amount;
+      out.sold += sold;
+    });
+    results[r.id] = out;
+  });
+  return { results, level };
+}
+// ある時点の直前の在庫(入力画面の「前回の在庫」用)
+function stockLevelBefore(placeId, sellerId, itemId, date, createdAt, excludeId) {
+  let lv = 0;
+  stocks.filter(r => r.id !== excludeId && r.placeId === placeId && r.sellerId === sellerId && r.mode !== 'mobile')
+    .filter(r => recOrder(r, { date, createdAt }) < 0)
+    .sort(recOrder)
+    .forEach(r => {
+      (r.lines || []).forEach(l => {
+        if (l.itemId !== itemId) return;
+        if (l.remain !== null && l.remain !== undefined) lv = toNum(l.remain);
+        lv = lv - toNum(l.removed) + toNum(l.added);
+      });
+    });
+  return lv;
+}
+// 日付×場所ごとの行を作る(日別一覧・知り合い集計・年度集計の元)
+function buildDayRows(fromDate, toDate) {
+  const { results } = computeStock();
+  const map = {};
+  function row(date, placeId) {
+    const k = date + '|' + placeId;
+    if (!map[k]) map[k] = { date, placeId, cash: 0, paypay: 0, sellers: {}, events: [], notes: [], saleIds: [], stockIds: [], warn: false };
+    return map[k];
+  }
+  sales.forEach(s => {
+    if (s.date < fromDate || s.date > toDate) return;
+    const r = row(s.date, s.placeId);
+    r.cash += toNum(s.cash);
+    r.paypay += toNum(s.paypay);
+    (s.extras || []).forEach(x => { r.sellers[x.sellerId] = (r.sellers[x.sellerId] || 0) + toNum(x.amount); });
+    if (s.eventName && r.events.indexOf(s.eventName) === -1) r.events.push(s.eventName);
+    if (s.note) r.notes.push(s.note);
+    r.saleIds.push(s.id);
+  });
+  stocks.forEach(st => {
+    if (st.date < fromDate || st.date > toDate) return;
+    const r = row(st.date, st.placeId);
+    const res = results[st.id];
+    if (res) { r.sellers[st.sellerId] = (r.sellers[st.sellerId] || 0) + res.amount; if (res.warn) r.warn = true; }
+    if (st.eventName && r.events.indexOf(st.eventName) === -1) r.events.push(st.eventName);
+    r.stockIds.push(st.id);
+  });
+  return Object.values(map).map(r => {
+    r.total = r.cash + r.paypay;
+    r.friends = Object.values(r.sellers).reduce((a, b) => a + b, 0);
+    r.aqua = r.total - r.friends;
+    return r;
+  }).sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    return placeOrder(a.placeId) - placeOrder(b.placeId);
+  });
+}
+function placeOrder(id) { const i = places.findIndex(p => p.id === id); return i === -1 ? 9999 : i; }
+function sellerOrder(id) { const i = sellers.findIndex(s => s.id === id); return i === -1 ? 9999 : i; }
+
+// ===== タブ =====
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+    renderTab(btn.dataset.tab);
+  });
+});
+function activeTab() { const b = document.querySelector('.tab-btn.active'); return b ? b.dataset.tab : 'input'; }
+function renderTab(tab) {
+  if (tab === 'input') { renderSaleForm(false); renderRecentSales(); }
+  if (tab === 'stock') { renderStockForm(false); renderCurrentStock(); }
+  if (tab === 'daily') renderDaily();
+  if (tab === 'sellers') renderSellerSummary();
+  if (tab === 'summary') renderYear();
+  if (tab === 'master') renderMaster();
+}
+function renderAll() {
+  document.getElementById('setup-card').style.display = (loadedOnce && places.length === 0) ? 'block' : 'none';
+  renderTab(activeTab());
+}
+function goTab(tab) { document.querySelector('.tab-btn[data-tab="' + tab + '"]').click(); }
+
+// ===== 売上入力 =====
+let editingSaleId = null;
+
+function placeOptions(selectedId, filterFn) {
+  const list = places.filter(p => !p.hidden || p.id === selectedId).filter(filterFn || (() => true));
+  return list.map(p => `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${escapeHtml(p.name)}${p.type === 'mobile' ? '(移動販売)' : ''}</option>`).join('');
+}
+function sellerOptions(selectedId) {
+  return '<option value="">選んでください</option>' + sellers.map(s => `<option value="${s.id}" ${s.id === selectedId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
+}
+
+function readExtras() {
+  return [...document.querySelectorAll('#s-extras .extra-row')].map(r => ({
+    sellerId: r.querySelector('.x-seller').value,
+    amount: r.querySelector('.x-amount').value,
+    note: r.querySelector('.x-note').value
+  }));
+}
+function renderExtras(list) {
+  const wrap = document.getElementById('s-extras');
+  wrap.innerHTML = list.map((x, i) => `
+    <div class="extra-row" data-idx="${i}">
+      <div class="field"><label>出品者</label><select class="cell-select x-seller">${sellerOptions(x.sellerId)}</select></div>
+      <div class="field"><label>金額(円)</label><input class="cell-input x-amount" type="number" inputmode="numeric" step="1" value="${escapeHtml(x.amount)}"></div>
+      <div class="field"><label>メモ</label><input class="cell-input x-note" type="text" value="${escapeHtml(x.note)}" placeholder="例: ゲスト中村さん"></div>
+      <button type="button" class="btn-text-danger x-remove" data-idx="${i}">削除</button>
+    </div>`).join('');
+  wrap.querySelectorAll('.x-remove').forEach(b => b.addEventListener('click', () => {
+    const cur = readExtras(); cur.splice(parseInt(b.dataset.idx, 10), 1); renderExtras(cur); updateSalePreview();
+  }));
+  wrap.querySelectorAll('input, select').forEach(el => el.addEventListener('input', updateSalePreview));
+}
+document.getElementById('s-add-extra').addEventListener('click', () => {
+  const cur = readExtras(); cur.push({ sellerId: '', amount: '', note: '' }); renderExtras(cur);
+});
+
+function applySalePlaceVisibility() {
+  const p = placeById(document.getElementById('s-place').value);
+  document.getElementById('s-event-field').style.display = p && p.type === 'mobile' ? 'flex' : 'none';
+  document.getElementById('s-paypay-field').style.display = p && p.hasPayPay === false ? 'none' : 'flex';
+  document.getElementById('s-extras-wrap').style.display = p && p.allowSellers === false ? 'none' : 'block';
+}
+function updateSalePreview() {
+  const p = placeById(document.getElementById('s-place').value);
+  const cash = toNum(document.getElementById('s-cash').value);
+  const paypay = p && p.hasPayPay === false ? 0 : toNum(document.getElementById('s-paypay').value);
+  const extras = p && p.allowSellers === false ? 0 : readExtras().reduce((a, x) => a + toNum(x.amount), 0);
+  document.getElementById('s-total-preview').textContent =
+    '合計 ' + yen(cash + paypay) + (extras ? '(うち金額入力の知り合い分 ' + yen(extras) + ')' : '');
+}
+function renderSaleForm(keepValues) {
+  const sel = document.getElementById('s-place');
+  const prev = sel.value;
+  sel.innerHTML = placeOptions(prev);
+  if (!keepValues && !editingSaleId) {
+    if (!document.getElementById('s-date').value) document.getElementById('s-date').value = todayStr();
+  }
+  if (prev && placeById(prev)) sel.value = prev;
+  // 金額行の出品者リストを最新にする
+  renderExtras(readExtras());
+  applySalePlaceVisibility();
+  updateSalePreview();
+}
+function resetSaleForm() {
+  editingSaleId = null;
+  document.getElementById('s-heading').textContent = '売上を記録';
+  document.getElementById('s-submit').textContent = '記録する';
+  document.getElementById('s-cancel').style.display = 'none';
+  ['s-cash', 's-paypay', 's-event', 's-note'].forEach(id => { document.getElementById(id).value = ''; });
+  renderExtras([]);
+  updateSalePreview();
+}
+['s-place'].forEach(id => document.getElementById(id).addEventListener('change', () => { applySalePlaceVisibility(); updateSalePreview(); }));
+['s-cash', 's-paypay'].forEach(id => document.getElementById(id).addEventListener('input', updateSalePreview));
+document.getElementById('s-cancel').addEventListener('click', resetSaleForm);
+
+function editSale(id) {
+  const s = sales.find(x => x.id === id);
+  if (!s) return;
+  goTab('input');
+  editingSaleId = id;
+  document.getElementById('s-heading').textContent = '売上を編集';
+  document.getElementById('s-submit').textContent = '更新する';
+  document.getElementById('s-cancel').style.display = 'inline-block';
+  document.getElementById('s-date').value = s.date;
+  document.getElementById('s-place').innerHTML = placeOptions(s.placeId);
+  document.getElementById('s-place').value = s.placeId;
+  document.getElementById('s-event').value = s.eventName || '';
+  document.getElementById('s-cash').value = s.cash === null || s.cash === undefined ? '' : s.cash;
+  document.getElementById('s-paypay').value = s.paypay === null || s.paypay === undefined ? '' : s.paypay;
+  document.getElementById('s-note').value = s.note || '';
+  renderExtras((s.extras || []).map(x => ({ sellerId: x.sellerId, amount: x.amount, note: x.note || '' })));
+  applySalePlaceVisibility();
+  updateSalePreview();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+document.getElementById('s-submit').addEventListener('click', async () => {
+  const date = document.getElementById('s-date').value;
+  const placeId = document.getElementById('s-place').value;
+  const p = placeById(placeId);
+  const cash = inputNum(document.getElementById('s-cash'));
+  const paypay = p && p.hasPayPay === false ? null : inputNum(document.getElementById('s-paypay'));
+  const extras = (p && p.allowSellers === false ? [] : readExtras())
+    .filter(x => x.sellerId && String(x.amount).trim() !== '')
+    .map(x => ({ sellerId: x.sellerId, amount: toNum(x.amount), note: x.note.trim() }));
+  const errorEl = document.getElementById('s-error');
+  if (!date || !p || (cash === null && paypay === null && extras.length === 0)) { errorEl.classList.add('show'); return; }
+  errorEl.classList.remove('show');
+
+  if (!editingSaleId && p.type !== 'mobile' && sales.some(s => s.date === date && s.placeId === placeId)) {
+    const go = await showConfirm(fmtMD(date) + 'の「' + p.name + '」はすでに記録があります。\nもう1件追加しますか？(金額は合算されます)', '追加する');
+    if (!go) return;
+  }
+  const btn = document.getElementById('s-submit');
+  btn.disabled = true;
+  let rec;
+  const fields = { date, placeId, eventName: p.type === 'mobile' ? document.getElementById('s-event').value.trim() : '', cash, paypay, extras, note: document.getElementById('s-note').value.trim() };
+  if (editingSaleId) {
+    rec = sales.find(x => x.id === editingSaleId);
+    Object.assign(rec, fields, { updatedAt: Date.now() });
+  } else {
+    rec = Object.assign({ id: uid(), createdAt: Date.now() }, fields);
+    sales.push(rec);
+  }
+  const wasEditing = !!editingSaleId;
+  const ok = await saveRecord('sale', rec);
+  btn.disabled = false;
+  if (ok) {
+    showSaveModal(wasEditing ? '売上を更新しました' : fmtMD(date) + '「' + p.name + '」' + yen(toNum(cash) + toNum(paypay)) + 'を記録しました', true);
+    resetSaleForm();
+  } else {
+    showSaveModal('保存に失敗しました。通信状況を確認して、もう一度「記録する」を押してください', false);
+  }
+  renderRecentSales();
+});
+
+function renderRecentSales() {
+  const wrap = document.getElementById('recent-sales');
+  const list = sales.slice().sort((a, b) => recOrder(b, a)).slice(0, 10);
+  if (list.length === 0) { wrap.innerHTML = '<div class="empty-state">まだ記録がありません</div>'; return; }
+  wrap.innerHTML = `<div style="overflow-x:auto;"><table class="nowrap-table">
+    <thead><tr><th>日付</th><th>場所</th><th class="num">現金</th><th class="num">PayPay</th><th>備考</th><th></th></tr></thead>
+    <tbody>${list.map(s => `<tr>
+      <td>${fmtMD(s.date)}</td>
+      <td>${escapeHtml(placeName(s.placeId))}${s.eventName ? '<br><span class="hint">' + escapeHtml(s.eventName) + '</span>' : ''}</td>
+      <td class="num">${s.cash === null || s.cash === undefined ? '-' : yen(s.cash)}</td>
+      <td class="num">${s.paypay === null || s.paypay === undefined ? '-' : yen(s.paypay)}</td>
+      <td>${escapeHtml(s.note || '')}${(s.extras || []).length ? '<br><span class="hint">知り合い分 ' + yen((s.extras || []).reduce((a, x) => a + toNum(x.amount), 0)) + '</span>' : ''}</td>
+      <td class="row-actions"><button class="btn-text" data-edit="${s.id}">編集</button><button class="btn-text-danger" data-del="${s.id}">削除</button></td>
+    </tr>`).join('')}</tbody></table></div>`;
+  wrap.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => editSale(b.dataset.edit)));
+  wrap.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteSale(b.dataset.del)));
+}
+async function deleteSale(id) {
+  const s = sales.find(x => x.id === id);
+  if (!s) return false;
+  if (!(await showConfirm(fmtMD(s.date) + '「' + placeName(s.placeId) + '」の売上記録(' + yen(toNum(s.cash) + toNum(s.paypay)) + ')を削除しますか？'))) return false;
+  sales = sales.filter(x => x.id !== id);
+  if (editingSaleId === id) resetSaleForm();
+  renderTab(activeTab());
+  const ok = await deleteRecord('sale', id);
+  if (ok) showToast('削除しました');
+  return true;
+}
+
+// ===== 知り合いの品出し =====
+let editingStockId = null;
+let editingStockCreatedAt = null;
+
+function stockPlaces() { return places.filter(p => p.allowSellers !== false); }
+
+function readStockLines() {
+  const map = {};
+  document.querySelectorAll('#k-lines tr[data-item]').forEach(tr => {
+    const v = {};
+    tr.querySelectorAll('input[data-f]').forEach(inp => { v[inp.dataset.f] = inp.value; });
+    map[tr.dataset.item] = v;
+  });
+  return map;
+}
+function renderStockForm(keepValues, presetLines) {
+  const placeSel = document.getElementById('k-place');
+  const sellerSel = document.getElementById('k-seller');
+  const prevPlace = placeSel.value, prevSeller = sellerSel.value;
+  placeSel.innerHTML = placeOptions(prevPlace, p => p.allowSellers !== false);
+  if (prevPlace && [...placeSel.options].some(o => o.value === prevPlace)) placeSel.value = prevPlace;
+  sellerSel.innerHTML = sellerOptions(prevSeller);
+  if (prevSeller && sellerById(prevSeller)) sellerSel.value = prevSeller;
+  if (!document.getElementById('k-date').value) document.getElementById('k-date').value = todayStr();
+  renderStockLines(presetLines || (keepValues ? readStockLines() : readStockLines()));
+}
+function renderStockLines(values) {
+  values = values || {};
+  const date = document.getElementById('k-date').value;
+  const placeId = document.getElementById('k-place').value;
+  const sellerId = document.getElementById('k-seller').value;
+  const mobile = isMobile(placeId);
+  document.getElementById('k-event-field').style.display = mobile ? 'flex' : 'none';
+  document.getElementById('k-howto').textContent = mobile
+    ? '移動販売では「持って行った数」と「残った数」を入れると、売れた数が自動で出ます。'
+    : '品物を見に行ったら「今の残り」を数えて入力し、補充した数・引き上げた数も入れてください。売れた数 = 前回の在庫 − 今の残り で自動計算します。初めて置くときは「補充」だけ入れます。';
+  const wrap = document.getElementById('k-lines');
+  const seller = sellerById(sellerId);
+  if (stockPlaces().length === 0) { wrap.innerHTML = '<div class="empty-state">知り合いの品物を置く販売場所がありません。マスタで設定してください</div>'; updateStockPreview(); return; }
+  if (!seller) { wrap.innerHTML = '<div class="empty-state">出品者を選んでください</div>'; updateStockPreview(); return; }
+  // 現在の品目 + 編集中の記録にだけある品目
+  const items = (seller.items || []).map(it => ({ id: it.id, name: it.name, price: it.price }));
+  Object.keys(values).forEach(id => {
+    if (!items.some(i => i.id === id) && values[id].__name) items.push({ id, name: values[id].__name, price: values[id].__price });
+  });
+  if (items.length === 0) { wrap.innerHTML = '<div class="empty-state">' + escapeHtml(seller.name) + 'さんの品目がまだありません。マスタの「出品者と品目」で品目と値段を登録してください</div>'; updateStockPreview(); return; }
+  const createdAt = editingStockId ? editingStockCreatedAt : Date.now();
+  const head = mobile
+    ? '<tr><th>品目</th><th class="num">単価</th><th class="num">持って行った数</th><th class="num">残った数</th><th class="num">売れた数</th><th class="num">金額</th></tr>'
+    : '<tr><th>品目</th><th class="num">単価</th><th class="num">前回の在庫</th><th class="num">今の残り</th><th class="num">引き上げ</th><th class="num">補充</th><th class="num">売れた数</th><th class="num">金額</th><th class="num">補充後</th></tr>';
+  wrap.innerHTML = `<div style="overflow-x:auto;"><table class="stock-table nowrap-table"><thead>${head}</thead><tbody>${items.map(it => {
+    const v = values[it.id] || {};
+    const price = v.__price !== undefined ? v.__price : it.price;
+    const prev = mobile ? 0 : stockLevelBefore(placeId, sellerId, it.id, date, createdAt, editingStockId);
+    const inp = (f) => `<input class="cell-input num" type="number" inputmode="numeric" min="0" step="1" data-f="${f}" value="${escapeHtml(v[f] === undefined || v[f] === null ? '' : v[f])}">`;
+    return mobile
+      ? `<tr data-item="${it.id}" data-name="${escapeHtml(it.name)}" data-price="${toNum(price)}"><td>${escapeHtml(it.name)}</td><td class="num">${yen(price)}</td><td>${inp('taken')}</td><td>${inp('left')}</td><td class="num k-sold"></td><td class="num k-amount"></td></tr>`
+      : `<tr data-item="${it.id}" data-name="${escapeHtml(it.name)}" data-price="${toNum(price)}" data-prev="${prev}"><td>${escapeHtml(it.name)}</td><td class="num">${yen(price)}</td><td class="num">${prev}</td><td>${inp('remain')}</td><td>${inp('removed')}</td><td>${inp('added')}</td><td class="num k-sold"></td><td class="num k-amount"></td><td class="num k-after"></td></tr>`;
+  }).join('')}</tbody></table></div>`;
+  wrap.querySelectorAll('input').forEach(i => i.addEventListener('input', updateStockPreview));
+  updateStockPreview();
+}
+function lineCalc(tr, mobile) {
+  const g = f => { const el = tr.querySelector('input[data-f="' + f + '"]'); return el ? inputNum(el) : null; };
+  const price = toNum(tr.dataset.price);
+  if (mobile) {
+    const taken = g('taken'), left = g('left');
+    const sold = taken === null ? null : taken - toNum(left);
+    return { sold, amount: sold === null ? 0 : sold * price, after: null, filled: taken !== null || left !== null };
+  }
+  const prev = toNum(tr.dataset.prev);
+  const remain = g('remain'), removed = g('removed'), added = g('added');
+  const sold = remain === null ? null : prev - remain;
+  const after = (remain === null ? prev : remain) - toNum(removed) + toNum(added);
+  return { sold, amount: sold === null ? 0 : sold * price, after, filled: remain !== null || removed !== null || added !== null };
+}
+function updateStockPreview() {
+  const mobile = isMobile(document.getElementById('k-place').value);
+  let total = 0, warn = false;
+  document.querySelectorAll('#k-lines tr[data-item]').forEach(tr => {
+    const c = lineCalc(tr, mobile);
+    tr.querySelector('.k-sold').textContent = c.sold === null ? '' : c.sold;
+    tr.querySelector('.k-sold').className = 'num k-sold' + (c.sold !== null && c.sold < 0 ? ' warn-text' : '');
+    tr.querySelector('.k-amount').textContent = c.sold === null ? '' : yen(c.amount);
+    const afterEl = tr.querySelector('.k-after');
+    if (afterEl) afterEl.textContent = c.filled ? c.after : '';
+    if (c.sold !== null && c.sold < 0) warn = true;
+    total += c.amount;
+  });
+  document.getElementById('k-total-preview').innerHTML = document.querySelector('#k-lines tr[data-item]')
+    ? '売上 ' + yen(total) + (warn ? '<div class="warn-text">売れた数がマイナスの品目があります。前回の補充の入れ忘れがないか確認してください</div>' : '')
+    : '';
+}
+['k-date', 'k-place', 'k-seller'].forEach(id => document.getElementById(id).addEventListener('change', () => {
+  const keep = readStockLines();
+  renderStockLines(id === 'k-seller' ? {} : keep);
+}));
+document.getElementById('k-cancel').addEventListener('click', resetStockForm);
+
+function resetStockForm() {
+  editingStockId = null; editingStockCreatedAt = null;
+  document.getElementById('k-heading').textContent = '知り合いの品物を記録';
+  document.getElementById('k-submit').textContent = '記録する';
+  document.getElementById('k-cancel').style.display = 'none';
+  document.getElementById('k-note').value = '';
+  document.getElementById('k-event').value = '';
+  renderStockLines({});
+}
+function editStock(id) {
+  const r = stocks.find(x => x.id === id);
+  if (!r) return;
+  goTab('stock');
+  editingStockId = id; editingStockCreatedAt = r.createdAt || 0;
+  document.getElementById('k-heading').textContent = '知り合いの品物の記録を編集';
+  document.getElementById('k-submit').textContent = '更新する';
+  document.getElementById('k-cancel').style.display = 'inline-block';
+  document.getElementById('k-date').value = r.date;
+  document.getElementById('k-place').innerHTML = placeOptions(r.placeId, p => p.allowSellers !== false || p.id === r.placeId);
+  document.getElementById('k-place').value = r.placeId;
+  document.getElementById('k-seller').innerHTML = sellerOptions(r.sellerId);
+  document.getElementById('k-seller').value = r.sellerId;
+  document.getElementById('k-event').value = r.eventName || '';
+  document.getElementById('k-note').value = r.note || '';
+  const vals = {};
+  (r.lines || []).forEach(l => {
+    vals[l.itemId] = { __name: l.name, __price: l.price, remain: l.remain, removed: l.removed, added: l.added, taken: l.taken, left: l.left };
+  });
+  renderStockLines(vals);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+document.getElementById('k-submit').addEventListener('click', async () => {
+  const date = document.getElementById('k-date').value;
+  const placeId = document.getElementById('k-place').value;
+  const sellerId = document.getElementById('k-seller').value;
+  const mobile = isMobile(placeId);
+  const lines = [];
+  document.querySelectorAll('#k-lines tr[data-item]').forEach(tr => {
+    const g = f => { const el = tr.querySelector('input[data-f="' + f + '"]'); return el ? inputNum(el) : null; };
+    const base = { itemId: tr.dataset.item, name: tr.dataset.name, price: toNum(tr.dataset.price) };
+    if (mobile) {
+      const taken = g('taken'), left = g('left');
+      if (taken !== null || left !== null) lines.push(Object.assign(base, { taken, left }));
+    } else {
+      const remain = g('remain'), removed = g('removed'), added = g('added');
+      if (remain !== null || removed !== null || added !== null) lines.push(Object.assign(base, { remain, removed, added }));
+    }
+  });
+  const errorEl = document.getElementById('k-error');
+  if (!date || !placeById(placeId) || !sellerById(sellerId) || lines.length === 0) { errorEl.classList.add('show'); return; }
+  errorEl.classList.remove('show');
+  const btn = document.getElementById('k-submit');
+  btn.disabled = true;
+  const fields = { date, placeId, sellerId, mode: mobile ? 'mobile' : 'unmanned', eventName: mobile ? document.getElementById('k-event').value.trim() : '', lines, note: document.getElementById('k-note').value.trim() };
+  let rec;
+  const wasEditing = !!editingStockId;
+  if (editingStockId) {
+    rec = stocks.find(x => x.id === editingStockId);
+    Object.assign(rec, fields, { updatedAt: Date.now() });
+  } else {
+    rec = Object.assign({ id: uid(), createdAt: Date.now() }, fields);
+    stocks.push(rec);
+  }
+  const ok = await saveRecord('stock', rec);
+  btn.disabled = false;
+  const res = computeStock().results[rec.id];
+  if (ok) {
+    showSaveModal((wasEditing ? '記録を更新しました' : sellerName(sellerId) + 'の品物を記録しました') + (res ? '(売上 ' + yen(res.amount) + ')' : ''), true);
+    resetStockForm();
+  } else {
+    showSaveModal('保存に失敗しました。通信状況を確認して、もう一度「記録する」を押してください', false);
+  }
+  renderCurrentStock();
+});
+
+function renderCurrentStock() {
+  const wrap = document.getElementById('k-current-stock');
+  const { level } = computeStock();
+  const rows = [];
+  places.filter(p => p.type !== 'mobile').forEach(p => {
+    sellers.forEach(s => {
+      (s.items || []).forEach(it => {
+        const v = level[p.id + '|' + s.id + '|' + it.id];
+        if (v) rows.push({ place: p.name, seller: s.name, item: it.name, qty: v });
+      });
+    });
+  });
+  if (rows.length === 0) { wrap.innerHTML = '<div class="empty-state">置いてある品物の記録はありません</div>'; return; }
+  wrap.innerHTML = `<div style="overflow-x:auto;"><table class="nowrap-table"><thead><tr><th>場所</th><th>出品者</th><th>品目</th><th class="num">個数</th></tr></thead><tbody>${
+    rows.map(r => `<tr><td>${escapeHtml(r.place)}</td><td>${escapeHtml(r.seller)}</td><td>${escapeHtml(r.item)}</td><td class="num">${r.qty}</td></tr>`).join('')
+  }</tbody></table></div>`;
+}
+
+async function deleteStock(id) {
+  const r = stocks.find(x => x.id === id);
+  if (!r) return false;
+  if (!(await showConfirm(fmtMD(r.date) + '「' + sellerName(r.sellerId) + '」の品出し記録を削除しますか？\n(あとの日の「売れた数」も計算し直されます)'))) return false;
+  stocks = stocks.filter(x => x.id !== id);
+  if (editingStockId === id) resetStockForm();
+  renderTab(activeTab());
+  const ok = await deleteRecord('stock', id);
+  if (ok) showToast('削除しました');
+  return true;
+}
+
+// ===== 日別一覧 =====
+let dYear = new Date().getFullYear(), dMonth = new Date().getMonth() + 1;
+function monthRange(y, m) { return [y + '-' + pad2(m) + '-01', y + '-' + pad2(m) + '-' + pad2(daysInMonth(y, m))]; }
+function stepMonth(y, m, delta) { m += delta; while (m < 1) { m += 12; y--; } while (m > 12) { m -= 12; y++; } return [y, m]; }
+
+function renderDaily() {
+  const [from, to] = monthRange(dYear, dMonth);
+  const now = new Date();
+  document.getElementById('d-title').textContent = dYear + '年' + dMonth + '月';
+  document.getElementById('d-jump').style.display = (dYear === now.getFullYear() && dMonth === now.getMonth() + 1) ? 'none' : 'inline-block';
+  const rows = buildDayRows(from, to);
+  const sum = f => rows.reduce((a, r) => a + r[f], 0);
+  document.getElementById('d-stats').innerHTML = `
+    <div class="stat-box"><div class="stat-label">売上合計</div><div class="stat-value">${yen(sum('total'))}</div></div>
+    <div class="stat-box accent"><div class="stat-label">アクア</div><div class="stat-value">${yen(sum('aqua'))}</div></div>
+    <div class="stat-box gold"><div class="stat-label">知り合い</div><div class="stat-value">${yen(sum('friends'))}</div></div>
+    <div class="stat-box"><div class="stat-label">現金</div><div class="stat-value">${yen(sum('cash'))}</div></div>
+    <div class="stat-box"><div class="stat-label">PayPay</div><div class="stat-value">${yen(sum('paypay'))}</div></div>`;
+  const wrap = document.getElementById('d-table');
+  if (rows.length === 0) { wrap.innerHTML = '<div class="empty-state">この月の記録はありません</div>'; return; }
+  wrap.innerHTML = `<table class="fixed-table">
+    <colgroup><col style="width:110px"><col style="width:170px"><col style="width:110px"><col style="width:110px"><col style="width:120px"><col style="width:120px"><col style="width:240px"><col style="width:120px"></colgroup>
+    <thead><tr><th class="col-first">日付</th><th>場所</th><th class="num">現金</th><th class="num">PayPay</th><th class="num">知り合い</th><th class="num">アクア</th><th>備考</th><th class="col-last num">合計</th></tr></thead>
+    <tbody>${rows.map((r, i) => `<tr class="clickable" data-idx="${i}">
+      <td class="col-first">${fmtMD(r.date)}</td>
+      <td>${escapeHtml(placeName(r.placeId))}${r.events.length ? '<br><span class="hint">' + escapeHtml(r.events.join('・')) + '</span>' : ''}</td>
+      <td class="num">${yen(r.cash)}</td>
+      <td class="num">${r.paypay ? yen(r.paypay) : '-'}</td>
+      <td class="num">${r.friends ? yen(r.friends) : '-'}${r.warn ? '<br><span class="warn-text">要確認</span>' : ''}</td>
+      <td class="num ${r.aqua < 0 ? 'neg' : ''}">${yen(r.aqua)}</td>
+      <td style="white-space:normal;">${escapeHtml(r.notes.join(' / '))}</td>
+      <td class="col-last num">${yen(r.total)}</td>
+    </tr>`).join('')}</tbody>
+    <tfoot><tr class="row-total"><td class="col-first">合計</td><td></td><td class="num">${yen(sum('cash'))}</td><td class="num">${yen(sum('paypay'))}</td><td class="num">${yen(sum('friends'))}</td><td class="num">${yen(sum('aqua'))}</td><td></td><td class="col-last num">${yen(sum('total'))}</td></tr></tfoot>
+  </table>`;
+  wrap.querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', () => openDetail(rows[parseInt(tr.dataset.idx, 10)])));
+  applyZoom();
+}
+document.getElementById('d-prev').addEventListener('click', () => { [dYear, dMonth] = stepMonth(dYear, dMonth, -1); renderDaily(); });
+document.getElementById('d-next').addEventListener('click', () => { [dYear, dMonth] = stepMonth(dYear, dMonth, 1); renderDaily(); });
+document.getElementById('d-jump').addEventListener('click', () => { dYear = new Date().getFullYear(); dMonth = new Date().getMonth() + 1; renderDaily(); });
+
+let detailContext = null;
+function openDetail(row) {
+  detailContext = { date: row.date, placeId: row.placeId };
+  renderDetail();
+  document.getElementById('detail-modal').style.display = 'flex';
+}
+function renderDetail() {
+  if (!detailContext) return;
+  const { date, placeId } = detailContext;
+  const { results } = computeStock();
+  document.getElementById('detail-title').textContent = fmtMD(date) + '　' + placeName(placeId);
+  const daySales = sales.filter(s => s.date === date && s.placeId === placeId).sort(recOrder);
+  const dayStocks = stocks.filter(s => s.date === date && s.placeId === placeId).sort(recOrder);
+  const body = document.getElementById('detail-body');
+  let html = '<div class="section-label">売上(回収した金額)</div>';
+  html += daySales.length === 0 ? '<div class="hint">記録なし</div>' : daySales.map(s => `
+    <div class="detail-row">
+      <div class="detail-title">${s.eventName ? escapeHtml(s.eventName) + '　' : ''}合計 ${yen(toNum(s.cash) + toNum(s.paypay))}</div>
+      <div class="detail-sub">現金 ${yen(s.cash)}${s.paypay !== null && s.paypay !== undefined ? '・PayPay ' + yen(s.paypay) : ''}</div>
+      ${(s.extras || []).map(x => `<div class="detail-sub">知り合い(金額入力):${escapeHtml(sellerName(x.sellerId))} ${yen(x.amount)}${x.note ? '(' + escapeHtml(x.note) + ')' : ''}</div>`).join('')}
+      ${s.note ? `<div class="detail-sub">備考:${escapeHtml(s.note)}</div>` : ''}
+      <div class="btn-row" style="margin-top:6px;"><button class="btn-ghost" data-edit-sale="${s.id}">編集</button><button class="btn-ghost btn-danger" data-del-sale="${s.id}">削除</button></div>
+    </div>`).join('');
+  html += '<div class="section-label" style="margin-top:16px;">知り合いの品物</div>';
+  html += dayStocks.length === 0 ? '<div class="hint">記録なし</div>' : dayStocks.map(st => {
+    const res = results[st.id] || { lines: [], amount: 0 };
+    return `<div class="detail-row">
+      <div class="detail-title">${escapeHtml(sellerName(st.sellerId))}　売上 ${yen(res.amount)}</div>
+      ${res.lines.map(l => `<div class="detail-sub">${escapeHtml(l.name)}:売れた数 <span class="${l.sold < 0 ? 'warn-text' : ''}">${l.sold}</span>(${yen(l.price)})${l.after !== null ? '・補充後 ' + l.after : ''}</div>`).join('')}
+      ${st.note ? `<div class="detail-sub">備考:${escapeHtml(st.note)}</div>` : ''}
+      <div class="btn-row" style="margin-top:6px;"><button class="btn-ghost" data-edit-stock="${st.id}">編集</button><button class="btn-ghost btn-danger" data-del-stock="${st.id}">削除</button></div>
+    </div>`;
+  }).join('');
+  body.innerHTML = html;
+  body.querySelectorAll('[data-edit-sale]').forEach(b => b.addEventListener('click', () => { document.getElementById('detail-modal').style.display = 'none'; editSale(b.dataset.editSale); }));
+  body.querySelectorAll('[data-edit-stock]').forEach(b => b.addEventListener('click', () => { document.getElementById('detail-modal').style.display = 'none'; editStock(b.dataset.editStock); }));
+  body.querySelectorAll('[data-del-sale]').forEach(b => b.addEventListener('click', async () => { if (await deleteSale(b.dataset.delSale)) afterDetailDelete(); }));
+  body.querySelectorAll('[data-del-stock]').forEach(b => b.addEventListener('click', async () => { if (await deleteStock(b.dataset.delStock)) afterDetailDelete(); }));
+}
+function afterDetailDelete() {
+  const { date, placeId } = detailContext;
+  if (!sales.some(s => s.date === date && s.placeId === placeId) && !stocks.some(s => s.date === date && s.placeId === placeId)) {
+    document.getElementById('detail-modal').style.display = 'none';
+  } else renderDetail();
+}
+
+// ===== 知り合い集計 =====
+let pYear = new Date().getFullYear(), pMonth = new Date().getMonth() + 1;
+function renderSellerSummary() {
+  const [from, to] = monthRange(pYear, pMonth);
+  const now = new Date();
+  document.getElementById('p-title').textContent = pYear + '年' + pMonth + '月';
+  document.getElementById('p-jump').style.display = (pYear === now.getFullYear() && pMonth === now.getMonth() + 1) ? 'none' : 'inline-block';
+  const { results, level } = computeStock();
+  const data = {}; // sellerId -> { total, places: { placeId: { items: {name|price: {name, price, sold, amount}}, extra } } }
+  function d(sid, pid) {
+    if (!data[sid]) data[sid] = { total: 0, places: {} };
+    if (!data[sid].places[pid]) data[sid].places[pid] = { items: {}, extra: 0, extraNotes: [] };
+    return data[sid].places[pid];
+  }
+  stocks.forEach(st => {
+    if (st.date < from || st.date > to) return;
+    const res = results[st.id]; if (!res) return;
+    const pd = d(st.sellerId, st.placeId);
+    res.lines.forEach(l => {
+      const k = l.name + '|' + l.price;
+      if (!pd.items[k]) pd.items[k] = { name: l.name, price: l.price, sold: 0, amount: 0 };
+      pd.items[k].sold += l.sold; pd.items[k].amount += l.amount;
+    });
+    data[st.sellerId].total += res.amount;
+  });
+  sales.forEach(s => {
+    if (s.date < from || s.date > to) return;
+    (s.extras || []).forEach(x => {
+      const pd = d(x.sellerId, s.placeId);
+      pd.extra += toNum(x.amount);
+      if (x.note) pd.extraNotes.push(x.note);
+      data[x.sellerId].total += toNum(x.amount);
+    });
+  });
+  const wrap = document.getElementById('p-body');
+  const ids = Object.keys(data).sort((a, b) => sellerOrder(a) - sellerOrder(b));
+  if (ids.length === 0) { wrap.innerHTML = '<div class="empty-state">この月の知り合いの売上はありません</div>'; return; }
+  const grand = ids.reduce((a, id) => a + data[id].total, 0);
+  wrap.innerHTML = `<div class="stat-grid" style="margin:0 0 16px;"><div class="stat-box gold"><div class="stat-label">知り合いの売上合計</div><div class="stat-value">${yen(grand)}</div></div></div>` +
+    ids.map(sid => {
+      const sd = data[sid];
+      const pids = Object.keys(sd.places).sort((a, b) => placeOrder(a) - placeOrder(b));
+      const stockNow = places.filter(p => p.type !== 'mobile').map(p => {
+        const s = sellerById(sid); if (!s) return '';
+        const parts = (s.items || []).map(it => { const v = level[p.id + '|' + sid + '|' + it.id]; return v ? escapeHtml(it.name) + ' ' + v + '個' : ''; }).filter(Boolean);
+        return parts.length ? '<span class="pill gray">' + escapeHtml(p.name) + ':' + parts.join('、') + '</span>' : '';
+      }).join('');
+      return `<div class="seller-block">
+        <div class="seller-title"><span class="name">${escapeHtml(sellerName(sid))}</span><span class="amount">${yen(sd.total)}</span></div>
+        ${pids.map(pid => {
+          const pd = sd.places[pid];
+          const items = Object.values(pd.items);
+          return `<h3>${escapeHtml(placeName(pid))}</h3>
+            ${items.length ? `<div style="overflow-x:auto;"><table class="nowrap-table"><thead><tr><th>品目</th><th class="num">単価</th><th class="num">売れた数</th><th class="num">金額</th></tr></thead><tbody>${
+              items.map(it => `<tr><td>${escapeHtml(it.name)}</td><td class="num">${yen(it.price)}</td><td class="num ${it.sold < 0 ? 'warn-text' : ''}">${it.sold}</td><td class="num">${yen(it.amount)}</td></tr>`).join('')
+            }</tbody></table></div>` : ''}
+            ${pd.extra ? `<div class="hint" style="margin-top:6px;">金額で入力した分:${yen(pd.extra)}${pd.extraNotes.length ? '(' + escapeHtml(pd.extraNotes.join('、')) + ')' : ''}</div>` : ''}`;
+        }).join('')}
+        ${stockNow ? '<div style="margin-top:10px;"><span class="hint">いま置いてある数 </span>' + stockNow + '</div>' : ''}
+      </div>`;
+    }).join('');
+}
+document.getElementById('p-prev').addEventListener('click', () => { [pYear, pMonth] = stepMonth(pYear, pMonth, -1); renderSellerSummary(); });
+document.getElementById('p-next').addEventListener('click', () => { [pYear, pMonth] = stepMonth(pYear, pMonth, 1); renderSellerSummary(); });
+document.getElementById('p-jump').addEventListener('click', () => { pYear = new Date().getFullYear(); pMonth = new Date().getMonth() + 1; renderSellerSummary(); });
+
+// ===== 年度集計 =====
+let yFY = fiscalYearOf(todayStr());
+function renderYear() {
+  document.getElementById('y-title').textContent = yFY + '年度(' + yFY + '年3月〜' + (yFY + 1) + '年2月)';
+  const months = fiscalMonths(yFY);
+  const from = months[0] + '-01';
+  const [ly, lm] = months[11].split('-').map(Number);
+  const to = months[11] + '-' + pad2(daysInMonth(ly, lm));
+  const rows = buildDayRows(from, to);
+  // 行の定義: {label, cls, fn(row)->金額}
+  const lines = [];
+  lines.push({ label: '売上合計(全体)', cls: 'row-strong', fn: r => r.total });
+  lines.push({ label: 'アクア', cls: 'row-sub', fn: r => r.aqua });
+  lines.push({ label: '知り合い', cls: 'row-sub', fn: r => r.friends });
+  lines.push({ label: 'PayPay', cls: 'row-sub', fn: r => r.paypay });
+  const placeIds = places.map(p => p.id);
+  rows.forEach(r => { if (placeIds.indexOf(r.placeId) === -1) placeIds.push(r.placeId); });
+  placeIds.forEach(pid => {
+    const p = placeById(pid);
+    const pr = rows.filter(r => r.placeId === pid);
+    if (!p && pr.length === 0) return;
+    lines.push({ label: placeName(pid), cls: 'row-strong', fn: r => r.placeId === pid ? r.total : 0 });
+    lines.push({ label: '現金', cls: 'row-sub', fn: r => r.placeId === pid ? r.cash : 0 });
+    if (!p || p.hasPayPay !== false || pr.some(r => r.paypay)) lines.push({ label: 'PayPay', cls: 'row-sub', fn: r => r.placeId === pid ? r.paypay : 0 });
+    if (!p || p.allowSellers !== false || pr.some(r => r.friends)) {
+      lines.push({ label: 'アクア', cls: 'row-sub', fn: r => r.placeId === pid ? r.aqua : 0 });
+      const sids = [];
+      pr.forEach(r => Object.keys(r.sellers).forEach(s => { if (r.sellers[s] && sids.indexOf(s) === -1) sids.push(s); }));
+      sids.sort((a, b) => sellerOrder(a) - sellerOrder(b)).forEach(sid => {
+        lines.push({ label: sellerName(sid), cls: 'row-sub', fn: r => r.placeId === pid ? (r.sellers[sid] || 0) : 0 });
+      });
+    }
+  });
+  // 月ごとに集計(上期=3〜8月、下期=9〜2月)
+  const cols = [...months.slice(0, 6), 'H1', ...months.slice(6), 'H2'];
+  function val(line, col) {
+    if (col === 'H1') return months.slice(0, 6).reduce((a, m) => a + val(line, m), 0);
+    if (col === 'H2') return months.slice(6).reduce((a, m) => a + val(line, m), 0);
+    return rows.filter(r => r.date.slice(0, 7) === col).reduce((a, r) => a + line.fn(r), 0);
+  }
+  const totalAll = rows.reduce((a, r) => a + r.total, 0);
+  const aquaAll = rows.reduce((a, r) => a + r.aqua, 0);
+  const friendsAll = rows.reduce((a, r) => a + r.friends, 0);
+  document.getElementById('y-stats').innerHTML = `
+    <div class="stat-box"><div class="stat-label">年度の売上合計</div><div class="stat-value">${yen(totalAll)}</div></div>
+    <div class="stat-box accent"><div class="stat-label">アクア</div><div class="stat-value">${yen(aquaAll)}</div></div>
+    <div class="stat-box gold"><div class="stat-label">知り合い</div><div class="stat-value">${yen(friendsAll)}</div></div>`;
+  const wrap = document.getElementById('y-table');
+  if (rows.length === 0) { wrap.innerHTML = '<div class="empty-state">この年度の記録はありません</div>'; return; }
+  const colLabel = c => c === 'H1' ? '上期' : c === 'H2' ? '下期' : parseInt(c.slice(5), 10) + '月';
+  wrap.innerHTML = `<table class="fixed-table">
+    <colgroup><col style="width:170px">${cols.map(() => '<col style="width:108px">').join('')}<col style="width:120px"></colgroup>
+    <thead><tr><th class="col-first">項目</th>${cols.map(c => `<th class="num">${colLabel(c)}</th>`).join('')}<th class="col-last num">通期</th></tr></thead>
+    <tbody>${lines.map(l => {
+      const vals = cols.map(c => val(l, c));
+      const fy = val(l, 'H1') + val(l, 'H2');
+      return `<tr class="${l.cls}"><td class="col-first">${escapeHtml(l.label)}</td>${vals.map((v, i) => `<td class="num ${cols[i].length === 2 ? 'col-half' : ''} ${v < 0 ? 'neg' : ''}">${v ? yen(v) : '-'}</td>`).join('')}<td class="col-last num">${fy ? yen(fy) : '-'}</td></tr>`;
+    }).join('')}</tbody></table>`;
+  applyZoom();
+}
+document.getElementById('y-prev').addEventListener('click', () => { yFY--; renderYear(); });
+document.getElementById('y-next').addEventListener('click', () => { yFY++; renderYear(); });
+
+// ===== 表の拡大縮小 =====
+let zoomLevel = 100;
+try { zoomLevel = parseInt(localStorage.getItem(ZOOM_KEY), 10) || 100; } catch (e) { /* ignore */ }
+function applyZoom() {
+  document.querySelectorAll('.zoom-target').forEach(el => { el.style.zoom = zoomLevel / 100; });
+  document.querySelectorAll('.zoom-label').forEach(el => { el.textContent = zoomLevel + '%'; });
+}
+function setZoom(v) { zoomLevel = Math.max(50, Math.min(150, v)); try { localStorage.setItem(ZOOM_KEY, zoomLevel); } catch (e) { /* ignore */ } applyZoom(); }
+document.querySelectorAll('.zoom-in').forEach(b => b.addEventListener('click', () => setZoom(zoomLevel + 10)));
+document.querySelectorAll('.zoom-out').forEach(b => b.addEventListener('click', () => setZoom(zoomLevel - 10)));
+document.querySelectorAll('.zoom-reset').forEach(b => b.addEventListener('click', () => setZoom(100)));
+
+// ===== マスタ =====
+function renderMaster() {
+  const pw = document.getElementById('m-places');
+  if (places.length === 0) pw.innerHTML = '<div class="empty-state">販売場所がありません</div>';
+  else {
+    pw.innerHTML = `<div style="overflow-x:auto;"><table><thead><tr><th>並び順</th><th>名前</th><th>種類</th><th>PayPay</th><th>知り合いの品物</th><th></th></tr></thead><tbody>${
+      places.map((p, i) => `<tr>
+        <td style="white-space:nowrap;"><button class="btn-ghost" data-pmove="${p.id}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>↑</button> <button class="btn-ghost" data-pmove="${p.id}" data-dir="1" ${i === places.length - 1 ? 'disabled' : ''}>↓</button></td>
+        <td><input class="cell-input" data-pname="${p.id}" value="${escapeHtml(p.name)}"></td>
+        <td><select class="cell-select" data-ptype="${p.id}"><option value="unmanned" ${p.type !== 'mobile' ? 'selected' : ''}>無人販売</option><option value="mobile" ${p.type === 'mobile' ? 'selected' : ''}>移動販売</option></select></td>
+        <td><select class="cell-select" data-ppay="${p.id}"><option value="1" ${p.hasPayPay !== false ? 'selected' : ''}>あり</option><option value="0" ${p.hasPayPay === false ? 'selected' : ''}>なし</option></select></td>
+        <td><select class="cell-select" data-psel="${p.id}"><option value="1" ${p.allowSellers !== false ? 'selected' : ''}>置いている</option><option value="0" ${p.allowSellers === false ? 'selected' : ''}>置いていない</option></select></td>
+        <td class="row-actions"><button class="btn-text-danger" data-pdel="${p.id}">削除</button></td>
+      </tr>`).join('')
+    }</tbody></table></div>`;
+    pw.querySelectorAll('[data-pmove]').forEach(b => b.addEventListener('click', () => moveMaster('place', places, b.dataset.pmove, parseInt(b.dataset.dir, 10))));
+    const upd = async (id, patch) => { const p = placeById(id); Object.assign(p, patch); const ok = await saveRecord('place', p); if (ok) showToast('保存しました'); };
+    pw.querySelectorAll('[data-pname]').forEach(el => el.addEventListener('change', () => { const v = el.value.trim(); if (!v) { el.value = placeById(el.dataset.pname).name; return; } upd(el.dataset.pname, { name: v }); }));
+    pw.querySelectorAll('[data-ptype]').forEach(el => el.addEventListener('change', () => upd(el.dataset.ptype, { type: el.value })));
+    pw.querySelectorAll('[data-ppay]').forEach(el => el.addEventListener('change', () => upd(el.dataset.ppay, { hasPayPay: el.value === '1' })));
+    pw.querySelectorAll('[data-psel]').forEach(el => el.addEventListener('change', () => upd(el.dataset.psel, { allowSellers: el.value === '1' })));
+    pw.querySelectorAll('[data-pdel]').forEach(b => b.addEventListener('click', async () => {
+      const p = placeById(b.dataset.pdel);
+      const used = sales.some(s => s.placeId === p.id) || stocks.some(s => s.placeId === p.id);
+      if (!(await showConfirm('「' + p.name + '」を削除しますか？' + (used ? '\nこの場所の売上記録は残り、集計では「(削除済みの場所)」と表示されます。' : '')))) return;
+      places = places.filter(x => x.id !== p.id);
+      renderMaster();
+      if (await deleteRecord('place', p.id)) showToast('削除しました');
+    }));
+  }
+
+  const sw = document.getElementById('m-sellers');
+  if (sellers.length === 0) sw.innerHTML = '<div class="empty-state">出品者がいません</div>';
+  else {
+    sw.innerHTML = `<div style="overflow-x:auto;"><table><thead><tr><th>並び順</th><th>名前</th><th>品目(税込)</th><th></th></tr></thead><tbody>${
+      sellers.map((s, i) => `<tr>
+        <td style="white-space:nowrap;"><button class="btn-ghost" data-smove="${s.id}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>↑</button> <button class="btn-ghost" data-smove="${s.id}" data-dir="1" ${i === sellers.length - 1 ? 'disabled' : ''}>↓</button></td>
+        <td style="white-space:nowrap; font-weight:500;">${escapeHtml(s.name)}</td>
+        <td>${(s.items || []).length ? (s.items || []).map(it => `<span class="pill">${escapeHtml(it.name)} ${yen(it.price)}</span>`).join(' ') : '<span class="hint">品目なし(金額入力のみ)</span>'}</td>
+        <td class="row-actions"><button class="btn-text" data-sedit="${s.id}">編集</button><button class="btn-text-danger" data-sdel="${s.id}">削除</button></td>
+      </tr>`).join('')
+    }</tbody></table></div>`;
+    sw.querySelectorAll('[data-smove]').forEach(b => b.addEventListener('click', () => moveMaster('seller', sellers, b.dataset.smove, parseInt(b.dataset.dir, 10))));
+    sw.querySelectorAll('[data-sedit]').forEach(b => b.addEventListener('click', () => openSellerModal(b.dataset.sedit)));
+    sw.querySelectorAll('[data-sdel]').forEach(b => b.addEventListener('click', async () => {
+      const s = sellerById(b.dataset.sdel);
+      const used = stocks.some(x => x.sellerId === s.id) || sales.some(x => (x.extras || []).some(e => e.sellerId === s.id));
+      if (!(await showConfirm('「' + s.name + '」を削除しますか？' + (used ? '\n過去の記録は残り、集計では「(削除済みの出品者)」と表示されます。' : '')))) return;
+      sellers = sellers.filter(x => x.id !== s.id);
+      renderMaster();
+      if (await deleteRecord('seller', s.id)) showToast('削除しました');
+    }));
+  }
+}
+// 並べ替え:入れ替える2件だけを保存し、先に画面を更新する
+async function moveMaster(kind, list, id, dir) {
+  const i = list.findIndex(x => x.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= list.length) return;
+  const a = list[i], b = list[j];
+  const ta = a.sortOrder !== undefined ? a.sortOrder : i;
+  const tb = b.sortOrder !== undefined ? b.sortOrder : j;
+  a.sortOrder = tb === ta ? j : tb; b.sortOrder = tb === ta ? i : ta;
+  list[i] = b; list[j] = a;
+  renderMaster();
+  await saveRecord(kind, a);
+  await saveRecord(kind, b);
+}
+function nextSortOrder(list) { return list.reduce((m, x) => Math.max(m, x.sortOrder || 0), 0) + 1; }
+
+document.getElementById('m-place-add').addEventListener('click', async () => {
+  const name = document.getElementById('m-place-name').value.trim();
+  if (!name) { showToast('販売場所の名前を入力してください'); return; }
+  const p = {
+    id: uid(), name, type: document.getElementById('m-place-type').value,
+    hasPayPay: document.getElementById('m-place-paypay').value === '1',
+    allowSellers: document.getElementById('m-place-sellers').value === '1',
+    sortOrder: nextSortOrder(places)
+  };
+  places.push(p);
+  document.getElementById('m-place-name').value = '';
+  renderMaster();
+  const ok = await saveRecord('place', p);
+  showSaveModal(ok ? '「' + name + '」を追加しました' : '保存に失敗しました。もう一度お試しください', ok);
+  renderAll();
+});
+document.getElementById('m-seller-add').addEventListener('click', async () => {
+  const name = document.getElementById('m-seller-name').value.trim();
+  if (!name) { showToast('出品者の名前を入力してください'); return; }
+  const s = { id: uid(), name, items: [], sortOrder: nextSortOrder(sellers) };
+  sellers.push(s);
+  document.getElementById('m-seller-name').value = '';
+  renderMaster();
+  const ok = await saveRecord('seller', s);
+  showSaveModal(ok ? '「' + name + '」を追加しました。「編集」から品目と値段を登録してください' : '保存に失敗しました。もう一度お試しください', ok);
+});
+
+let editingSellerId = null;
+function readSellerItems() {
+  return [...document.querySelectorAll('#sm-items .sm-row')].map(r => ({ id: r.dataset.id, name: r.querySelector('.sm-name').value, price: r.querySelector('.sm-price').value }));
+}
+function renderSellerItems(list) {
+  const wrap = document.getElementById('sm-items');
+  if (list.length === 0) { wrap.innerHTML = '<div class="hint">品目がありません。下の「+ 品目を追加」で追加してください</div>'; return; }
+  wrap.innerHTML = list.map((it, i) => `<div class="extra-row sm-row" data-id="${escapeHtml(it.id)}">
+    <div class="field"><label>品目名</label><input class="cell-input sm-name" value="${escapeHtml(it.name)}" placeholder="例: 卵(10個入り)"></div>
+    <div class="field" style="max-width:140px;"><label>値段(税込)</label><input class="cell-input sm-price num" type="number" inputmode="numeric" min="0" step="1" value="${escapeHtml(it.price)}"></div>
+    <button type="button" class="btn-ghost" data-up="${i}" ${i === 0 ? 'disabled' : ''}>↑</button>
+    <button type="button" class="btn-text-danger" data-rm="${i}">削除</button>
+  </div>`).join('');
+  wrap.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { const c = readSellerItems(); c.splice(parseInt(b.dataset.rm, 10), 1); renderSellerItems(c); }));
+  wrap.querySelectorAll('[data-up]').forEach(b => b.addEventListener('click', () => { const c = readSellerItems(); const i = parseInt(b.dataset.up, 10); [c[i - 1], c[i]] = [c[i], c[i - 1]]; renderSellerItems(c); }));
+}
+function openSellerModal(id) {
+  const s = sellerById(id);
+  if (!s) return;
+  editingSellerId = id;
+  document.getElementById('sm-name').value = s.name;
+  document.getElementById('sm-error').classList.remove('show');
+  renderSellerItems((s.items || []).map(it => ({ id: it.id, name: it.name, price: it.price })));
+  document.getElementById('seller-modal').style.display = 'flex';
+}
+document.getElementById('sm-add-item').addEventListener('click', () => { const c = readSellerItems(); c.push({ id: uid(), name: '', price: '' }); renderSellerItems(c); });
+document.getElementById('sm-save').addEventListener('click', async () => {
+  const s = sellerById(editingSellerId);
+  const name = document.getElementById('sm-name').value.trim();
+  if (!s || !name) { document.getElementById('sm-error').classList.add('show'); return; }
+  s.name = name;
+  s.items = readSellerItems().filter(it => it.name.trim()).map(it => ({ id: it.id, name: it.name.trim(), price: toNum(it.price) }));
+  document.getElementById('seller-modal').style.display = 'none';
+  renderMaster();
+  const ok = await saveRecord('seller', s);
+  showSaveModal(ok ? '「' + name + '」を保存しました' : '保存に失敗しました。もう一度お試しください', ok);
+});
+
+// 初回の販売場所
+document.getElementById('setup-default-btn').addEventListener('click', async () => {
+  if (places.length > 0) return;
+  const defs = [
+    { name: '無人販売所', type: 'unmanned', hasPayPay: true, allowSellers: true },
+    { name: '幸福駅', type: 'unmanned', hasPayPay: false, allowSellers: false },
+    { name: '移動販売(マルシェ等)', type: 'mobile', hasPayPay: true, allowSellers: true }
+  ];
+  const btn = document.getElementById('setup-default-btn');
+  btn.disabled = true;
+  places = defs.map((d, i) => Object.assign({ id: uid() + i, sortOrder: i + 1 }, d));
+  try {
+    await sheetStorage.batch('setBatch', places.map(p => [keyOf('place', p), JSON.stringify(p)]));
+    saveToCache();
+    showSaveModal('販売場所を3か所作成しました。次にマスタで知り合い(出品者)と品目を登録してください', true);
+  } catch (e) {
+    if (!e.unauthorized) showSaveModal('作成に失敗しました。もう一度お試しください', false);
+    places = [];
+  }
+  btn.disabled = false;
+  renderAll();
+});
+
+// ===== バックアップ・復元 =====
+document.getElementById('backup-download-btn').addEventListener('click', () => {
+  const backup = { appName: 'アクア農園無人販売管理', version: 1, exportedAt: new Date().toISOString(), places, sellers, sales, stocks };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'mujin-backup_' + todayStr() + '.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('バックアップをダウンロードしました');
+});
+document.getElementById('backup-restore-btn').addEventListener('click', () => document.getElementById('backup-restore-input').click());
+document.getElementById('backup-restore-input').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  let data;
+  try { data = JSON.parse(await file.text()); } catch (err) { showSaveModal('ファイルを読み込めませんでした。正しいバックアップファイルか確認してください', false); return; }
+  if (!data || data.appName !== 'アクア農園無人販売管理' || !Array.isArray(data.places) || !Array.isArray(data.sales)) {
+    showSaveModal('このファイルは無人販売管理のバックアップではないようです', false); return;
+  }
+  const np = data.places, ns = data.sellers || [], nsa = data.sales, nst = data.stocks || [];
+  const ok = await showConfirm('このファイルの内容で、今のデータを置き換えます。\n販売場所 ' + np.length + '件・出品者 ' + ns.length + '件・売上 ' + nsa.length + '件・品出し ' + nst.length + '件\n(この操作は取り消せません。不安なときは先に「バックアップをダウンロード」してください)', '置き換える');
+  if (!ok) return;
+  const newPairs = [].concat(
+    np.map(r => [keyOf('place', r), JSON.stringify(r)]), ns.map(r => [keyOf('seller', r), JSON.stringify(r)]),
+    nsa.map(r => [keyOf('sale', r), JSON.stringify(r)]), nst.map(r => [keyOf('stock', r), JSON.stringify(r)])
+  );
+  const newKeys = {}; newPairs.forEach(p => { newKeys[p[0]] = true; });
+  const oldKeys = [].concat(places.map(r => keyOf('place', r)), sellers.map(r => keyOf('seller', r)), sales.map(r => keyOf('sale', r)), stocks.map(r => keyOf('stock', r)))
+    .filter(k => !newKeys[k]);
+  const prog = document.getElementById('progress-modal');
+  const msg = document.getElementById('progress-message');
+  prog.style.display = 'flex';
+  try {
+    if (oldKeys.length) { msg.textContent = '古いデータを整理しています…'; await sheetStorage.batch('deleteBatch', oldKeys); }
+    await sheetStorage.batch('setBatch', newPairs, (done, all) => { msg.textContent = done + ' / ' + all + ' 件'; });
+    places = np; sellers = ns; sales = nsa; stocks = nst;
+    sortMasters(); loadedOnce = true; saveToCache();
+    prog.style.display = 'none';
+    showSaveModal('復元しました(' + newPairs.length + '件)', true);
+  } catch (err) {
+    prog.style.display = 'none';
+    if (!err.unauthorized) showSaveModal('途中で失敗しました。通信状況を確認して、もう一度同じファイルで復元してください(何度やり直しても大丈夫です)', false);
+    await loadData();
+  }
+  renderAll();
+});
+
+document.getElementById('logout-btn').addEventListener('click', async () => {
+  if (!(await showConfirm('この端末からログアウトしますか？', 'ログアウト'))) return;
+  try { localStorage.removeItem(PASSWORD_STORAGE_KEY); localStorage.removeItem(CACHE_KEY); } catch (e) { /* ignore */ }
+  location.reload();
+});
+
+// ===== 起動 =====
+document.getElementById('refresh-data-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('refresh-data-btn');
+  btn.classList.add('is-loading'); btn.textContent = '↻ 更新中…';
+  const ok = await loadData();
+  renderAll();
+  btn.classList.remove('is-loading'); btn.textContent = '↻ 最新に更新';
+  if (ok) showToast('最新の内容に更新しました');
+});
+
+(async function init() {
+  document.getElementById('s-date').value = todayStr();
+  document.getElementById('k-date').value = todayStr();
+  if (loadFromCache()) renderAll();   // まず前回のデータですぐ表示
+  if (!getStoredPassword()) return;   // 合言葉の入力待ち
+  await loadData();                   // 裏で最新を取得して更新
+  renderAll();
+})();
+</script>
+</body>
+</html>
