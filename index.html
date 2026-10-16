@@ -207,7 +207,6 @@
   <div class="tabs">
     <button class="tab-btn active" data-tab="input">売上入力</button>
     <button class="tab-btn" data-tab="stock">知り合いの品出し</button>
-    <button class="tab-btn" data-tab="daily">日別一覧</button>
     <button class="tab-btn" data-tab="sellers">知り合い集計</button>
     <button class="tab-btn" data-tab="summary">年度集計</button>
     <button class="tab-btn" data-tab="master">マスタ</button>
@@ -245,8 +244,22 @@
       </div>
     </div>
     <div class="card">
-      <h2>最近の記録</h2>
-      <div id="recent-sales"></div>
+      <div class="nav-row">
+        <button class="btn-ghost" id="d-prev">← 前月</button>
+        <h2 id="d-title"></h2>
+        <button class="btn-ghost" id="d-next">次月 →</button>
+      </div>
+      <button class="btn-text" id="d-jump" style="display:none;">今月に戻る</button>
+      <div class="stat-grid" id="d-stats"></div>
+    </div>
+    <div class="card">
+      <div class="btn-row" style="margin-bottom:10px;">
+        <span class="hint">行を押すと、その日の記録の確認・編集・削除ができます</span>
+        <div class="zoom-control">
+          <button type="button" class="btn-ghost zoom-out">−</button><span class="zoom-label">100%</span><button type="button" class="btn-ghost zoom-in">＋</button><button type="button" class="btn-text zoom-reset">リセット</button>
+        </div>
+      </div>
+      <div class="scroll-wrap"><div class="zoom-target" id="d-table"></div></div>
     </div>
   </div>
 
@@ -275,28 +288,6 @@
     <div class="card">
       <h2>いま置いてある数</h2>
       <div id="k-current-stock"></div>
-    </div>
-  </div>
-
-  <!-- 日別一覧 -->
-  <div class="panel" id="panel-daily">
-    <div class="card">
-      <div class="nav-row">
-        <button class="btn-ghost" id="d-prev">← 前月</button>
-        <h2 id="d-title"></h2>
-        <button class="btn-ghost" id="d-next">次月 →</button>
-      </div>
-      <button class="btn-text" id="d-jump" style="display:none;">今月に戻る</button>
-      <div class="stat-grid" id="d-stats"></div>
-    </div>
-    <div class="card">
-      <div class="btn-row" style="margin-bottom:10px;">
-        <span class="hint">行を押すと、その日の記録の確認・編集・削除ができます</span>
-        <div class="zoom-control">
-          <button type="button" class="btn-ghost zoom-out">−</button><span class="zoom-label">100%</span><button type="button" class="btn-ghost zoom-in">＋</button><button type="button" class="btn-text zoom-reset">リセット</button>
-        </div>
-      </div>
-      <div class="scroll-wrap"><div class="zoom-target" id="d-table"></div></div>
     </div>
   </div>
 
@@ -775,9 +766,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 function activeTab() { const b = document.querySelector('.tab-btn.active'); return b ? b.dataset.tab : 'input'; }
 function renderTab(tab) {
-  if (tab === 'input') { renderSaleForm(false); renderRecentSales(); }
+  if (tab === 'input') { renderSaleForm(false); renderDaily(); }
   if (tab === 'stock') { renderStockForm(false); renderCurrentStock(); }
-  if (tab === 'daily') renderDaily();
   if (tab === 'sellers') renderSellerSummary();
   if (tab === 'summary') renderYear();
   if (tab === 'master') renderMaster();
@@ -1061,31 +1051,15 @@ document.getElementById('s-submit').addEventListener('click', async () => {
   if (ok) {
     const total = toSave.reduce((a, r) => a + toNum(r.cash) + toNum(r.paypay), 0);
     const friends = toSave.reduce((a, r) => a + r.extras.reduce((b, x) => b + x.amount, 0), 0);
+    [dYear, dMonth] = date.split('-').map(Number);
     showSaveModal((wasEditing ? '更新しました:' : '記録しました:') + fmtMD(date) + ' 合計 ' + yen(total) + (friends ? '(知り合い ' + yen(friends) + ')' : ''), true);
     resetSaleForm();
   } else {
     showSaveModal('保存できなかった項目があります。通信状況を確認して、「最新に更新」を押してから内容を確かめてください', false);
   }
-  renderRecentSales();
+  renderDaily();
 });
 
-function renderRecentSales() {
-  const wrap = document.getElementById('recent-sales');
-  const list = sales.slice().sort((a, b) => recOrder(b, a)).slice(0, 10);
-  if (list.length === 0) { wrap.innerHTML = '<div class="empty-state">まだ記録がありません</div>'; return; }
-  wrap.innerHTML = `<div style="overflow-x:auto;"><table class="nowrap-table">
-    <thead><tr><th>日付</th><th>場所</th><th class="num">現金</th><th class="num">PayPay</th><th>備考</th><th></th></tr></thead>
-    <tbody>${list.map(s => `<tr>
-      <td>${fmtMD(s.date)}</td>
-      <td>${escapeHtml(placeName(s.placeId))}${s.eventName ? '<br><span class="hint">' + escapeHtml(s.eventName) + '</span>' : ''}</td>
-      <td class="num">${s.cash === null || s.cash === undefined ? '-' : yen(s.cash)}</td>
-      <td class="num">${s.paypay === null || s.paypay === undefined ? '-' : yen(s.paypay)}</td>
-      <td>${escapeHtml(s.note || '')}${(s.extras || []).length ? '<br><span class="hint">知り合い分 ' + yen((s.extras || []).reduce((a, x) => a + toNum(x.amount), 0)) + '</span>' : ''}</td>
-      <td class="row-actions"><button class="btn-text" data-edit="${s.id}">編集</button><button class="btn-text-danger" data-del="${s.id}">削除</button></td>
-    </tr>`).join('')}</tbody></table></div>`;
-  wrap.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => editSale(b.dataset.edit)));
-  wrap.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteSale(b.dataset.del)));
-}
 async function deleteSale(id) {
   const s = sales.find(x => x.id === id);
   if (!s) return false;
