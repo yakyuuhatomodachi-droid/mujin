@@ -132,6 +132,22 @@
   .fixed-table tr.clickable { cursor: pointer; }
   .fixed-table tr.clickable:hover td { background: var(--accent-light); }
 
+  :root { --c1: #3A8A5C; --c2: #5B7FD6; }
+  .chart-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+  .chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart .grid { stroke: var(--border); stroke-width: 1; }
+  .chart .axis-label { font-size: 11px; fill: var(--text-secondary); }
+  .chart .band:hover { fill: rgba(36, 41, 31, 0.05); }
+  .chart-tip { position: fixed; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 12px; line-height: 1.6; box-shadow: 0 2px 8px rgba(0,0,0,0.12); z-index: 4500; display: none; white-space: nowrap; }
+  .chart-tip .t { font-weight: 700; }
+  .chart-tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .bar-label { width: 110px; font-size: 13px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { flex: 1; background: var(--bg); border-radius: 4px; height: 18px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 0 4px 4px 0; }
+  .bar-value { width: 96px; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .diff-up { color: var(--accent); } .diff-down { color: var(--danger); }
   .zoom-control { display: flex; align-items: center; gap: 6px; margin-left: auto; }
   .zoom-control span { font-size: 13px; min-width: 42px; text-align: center; }
 
@@ -207,7 +223,7 @@
 
   <div class="tabs">
     <button class="tab-btn active" data-tab="input">売上入力</button>
-    <button class="tab-btn" data-tab="summary">年度集計</button>
+    <button class="tab-btn" data-tab="summary">集計</button>
     <button class="tab-btn" data-tab="master">マスタ</button>
   </div>
 
@@ -263,9 +279,16 @@
     </div>
   </div>
 
-  <!-- 年度集計 -->
+  <!-- 集計 -->
   <div class="panel" id="panel-summary">
-    <div class="card">
+    <div class="seg" id="a-mode">
+      <button type="button" class="seg-btn active" data-view="month">月別</button>
+      <button type="button" class="seg-btn" data-view="weekday">曜日別</button>
+      <button type="button" class="seg-btn" data-view="compare">比較</button>
+      <button type="button" class="seg-btn" data-view="range">期間指定</button>
+    </div>
+
+    <div class="card" id="a-year-card">
       <div class="nav-row">
         <button class="btn-ghost" id="y-prev">← 前年度</button>
         <h2 id="y-title"></h2>
@@ -273,14 +296,61 @@
       </div>
       <div class="stat-grid" id="y-stats"></div>
     </div>
-    <div class="card">
-      <div class="btn-row" style="margin-bottom:10px;">
-        <span class="hint">年度は3月〜翌年2月です</span>
-        <div class="zoom-control">
+
+    <div id="view-month">
+      <div class="card"><h2>月ごとの売上</h2><div id="y-chart"></div></div>
+      <div class="card">
+        <div class="btn-row" style="margin-bottom:10px;">
+          <span class="hint">年度は3月〜翌年2月です</span>
+          <div class="zoom-control">
           <button type="button" class="btn-ghost zoom-out">−</button><span class="zoom-label">100%</span><button type="button" class="btn-ghost zoom-in">＋</button><button type="button" class="btn-text zoom-reset">リセット</button>
         </div>
+        </div>
+        <div class="scroll-wrap"><div class="zoom-target" id="y-table"></div></div>
       </div>
-      <div class="scroll-wrap"><div class="zoom-target" id="y-table"></div></div>
+    </div>
+
+    <div id="view-weekday" style="display:none;">
+      <div class="card">
+        <div class="form-row" style="align-items:flex-end;">
+          <div class="field" style="max-width:220px;"><label for="w-month">対象</label><select id="w-month"></select></div>
+          <span class="hint" style="margin-bottom:8px;">無人販売の1日あたり(休みの日・記録のない日は除く)</span>
+        </div>
+        <h2 style="margin-top:6px;">曜日ごとの1日平均(無人販売の単日合計)</h2>
+        <div id="w-chart"></div>
+      </div>
+      <div class="card"><div class="scroll-wrap"><div class="zoom-target" id="w-table"></div></div></div>
+    </div>
+
+    <div id="view-compare" style="display:none;">
+      <div class="card">
+        <div class="nav-row">
+          <button class="btn-ghost" id="c-prev">← 前月</button>
+          <h2 id="c-title"></h2>
+          <button class="btn-ghost" id="c-next">次月 →</button>
+        </div>
+        <div class="scroll-wrap" style="max-height:none;"><div class="zoom-target" id="c-table"></div></div>
+      </div>
+      <div class="card"><h2 id="c-chart-title">今年度と前年度(月ごとの合計)</h2><div id="c-chart"></div></div>
+    </div>
+
+    <div id="view-range" style="display:none;">
+      <div class="card">
+        <div class="form-row" style="align-items:flex-end;">
+          <div class="field" style="max-width:180px;"><label for="r-from">開始日</label><input id="r-from" type="date"></div>
+          <div class="field" style="max-width:180px;"><label for="r-to">終了日</label><input id="r-to" type="date"></div>
+        </div>
+        <div class="btn-row" id="r-quick">
+          <button type="button" class="btn-ghost" data-q="thisMonth">今月</button>
+          <button type="button" class="btn-ghost" data-q="lastMonth">先月</button>
+          <button type="button" class="btn-ghost" data-q="fy">今年度</button>
+          <button type="button" class="btn-ghost" data-q="h1">上期(3〜8月)</button>
+          <button type="button" class="btn-ghost" data-q="h2">下期(9〜2月)</button>
+        </div>
+        <div class="stat-grid" id="r-stats" style="margin-top:14px;"></div>
+      </div>
+      <div class="card"><h2>内訳</h2><div id="r-chart"></div></div>
+      <div class="card"><div class="scroll-wrap" style="max-height:none;"><div class="zoom-target" id="r-table"></div></div></div>
     </div>
   </div>
 
@@ -327,6 +397,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="chart-tip" id="chart-tip"></div>
 
 <div class="modal-overlay" id="detail-modal" style="display:none;">
   <div class="modal-box">
@@ -728,7 +799,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 function activeTab() { const b = document.querySelector('.tab-btn.active'); return b ? b.dataset.tab : 'input'; }
 function renderTab(tab) {
   if (tab === 'input') { renderSaleForm(false); renderDaily(); }
-  if (tab === 'summary') renderYear();
+  if (tab === 'summary') renderAnalysis();
   if (tab === 'master') renderMaster();
 }
 function renderAll() {
@@ -1214,62 +1285,319 @@ function afterDetailDelete() {
 
 // ===== 年度集計 =====
 let yFY = fiscalYearOf(todayStr());
-function renderYear() {
-  document.getElementById('y-title').textContent = yFY + '年度(' + yFY + '年3月〜' + (yFY + 1) + '年2月)';
-  const months = fiscalMonths(yFY);
-  const from = months[0] + '-01';
+let aView = 'month';
+function fyRange(fy) {
+  const months = fiscalMonths(fy);
   const [ly, lm] = months[11].split('-').map(Number);
-  const to = months[11] + '-' + pad2(daysInMonth(ly, lm));
-  const { rows, otherIds } = aquaRows(from, to);
-  // 行の定義(Excelの集計シートと同じ並び): {label, cls, fn(row)->金額}
-  const lines = [];
-  const sellerIdsOf = list => {
-    const ids = [];
-    list.forEach(r => Object.keys(r.sellers).forEach(id => { if (r.sellers[id] && ids.indexOf(id) === -1) ids.push(id); }));
-    return ids.sort((a, b) => sellerOrder(a) - sellerOrder(b));
+  return { months, from: months[0] + '-01', to: months[11] + '-' + pad2(daysInMonth(ly, lm)) };
+}
+function shortYen(n) {
+  if (Math.abs(n) >= 10000) return (Math.round(n / 1000) / 10).toString().replace(/\.0$/, '') + '万';
+  return Math.round(n).toLocaleString('ja-JP');
+}
+function pct(n) { return (n > 0 ? '+' : '') + (Math.round(n * 10) / 10).toFixed(1) + '%'; }
+
+// ----- 集計のもと(日別一覧と同じ考え方) -----
+function aggregate(rows) {
+  const a = { total: 0, uTotal: 0, uAqua: 0, uPaypay: 0, mTotal: 0, mAqua: 0, mPaypay: 0, uSellers: {}, mSellers: {}, sellers: {}, other: {}, days: 0, closed: 0, mCount: 0 };
+  rows.forEach(r => {
+    a.total += r.total;
+    Object.keys(r.sellers).forEach(id => { a.sellers[id] = (a.sellers[id] || 0) + r.sellers[id]; });
+    if (r.mobile) {
+      a.mTotal += r.total; a.mAqua += r.aquaNet; a.mPaypay += r.paypay; a.mCount++;
+      Object.keys(r.sellers).forEach(id => { a.mSellers[id] = (a.mSellers[id] || 0) + r.sellers[id]; });
+    } else {
+      a.uTotal += r.total; a.uAqua += r.aquaNet; a.uPaypay += r.paypay;
+      Object.keys(r.sellers).forEach(id => { a.uSellers[id] = (a.uSellers[id] || 0) + r.sellers[id]; });
+      Object.keys(r.placeCash).forEach(id => { a.other[id] = (a.other[id] || 0) + r.placeCash[id]; });
+      if (r.closed && !r.total) a.closed++; else if (r.total) a.days++;
+    }
+  });
+  return a;
+}
+// 表の行(Excelの集計シートと同じ並び)。aggs に出てくる人・場所だけ出す
+function lineDefs(aggs, otherIds) {
+  const ids = key => {
+    const list = [];
+    aggs.forEach(a => Object.keys(a[key]).forEach(id => { if (a[key][id] && list.indexOf(id) === -1) list.push(id); }));
+    return list.sort((x, y) => sellerOrder(x) - sellerOrder(y));
   };
-  const uRows = rows.filter(r => !r.mobile), mRows = rows.filter(r => r.mobile);
-  lines.push({ label: '無人販売合計', cls: 'row-strong', fn: r => r.mobile ? 0 : r.total });
-  lines.push({ label: 'アクア', cls: 'row-sub', fn: r => r.mobile ? 0 : r.aquaNet });
-  sellerIdsOf(uRows).forEach(id => lines.push({ label: sellerName(id), cls: 'row-sub', fn: r => r.mobile ? 0 : (r.sellers[id] || 0) }));
-  otherIds.forEach(id => lines.push({ label: placeName(id), cls: 'row-sub', fn: r => r.mobile ? 0 : (r.placeCash[id] || 0) }));
-  lines.push({ label: 'PayPay', cls: 'row-sub', fn: r => r.mobile ? 0 : r.paypay });
-  if (mRows.length || places.some(p => p.type === 'mobile')) {
-    lines.push({ label: '移動販売合計', cls: 'row-strong', fn: r => r.mobile ? r.total : 0 });
-    lines.push({ label: 'アクア', cls: 'row-sub', fn: r => r.mobile ? r.aquaNet : 0 });
-    sellerIdsOf(mRows).forEach(id => lines.push({ label: sellerName(id), cls: 'row-sub', fn: r => r.mobile ? (r.sellers[id] || 0) : 0 }));
-    lines.push({ label: 'PayPay', cls: 'row-sub', fn: r => r.mobile ? r.paypay : 0 });
+  const L = [];
+  L.push({ label: '無人販売合計', cls: 'row-strong', get: a => a.uTotal });
+  L.push({ label: 'アクア', cls: 'row-sub', get: a => a.uAqua });
+  ids('uSellers').forEach(id => L.push({ label: sellerName(id), cls: 'row-sub', get: a => a.uSellers[id] || 0 }));
+  otherIds.forEach(id => L.push({ label: placeName(id), cls: 'row-sub', get: a => a.other[id] || 0 }));
+  L.push({ label: 'PayPay', cls: 'row-sub', get: a => a.uPaypay });
+  if (aggs.some(a => a.mTotal || a.mCount) || places.some(p => p.type === 'mobile')) {
+    L.push({ label: '移動販売合計', cls: 'row-strong', get: a => a.mTotal });
+    L.push({ label: 'アクア', cls: 'row-sub', get: a => a.mAqua });
+    ids('mSellers').forEach(id => L.push({ label: sellerName(id), cls: 'row-sub', get: a => a.mSellers[id] || 0 }));
+    L.push({ label: 'PayPay', cls: 'row-sub', get: a => a.mPaypay });
   }
-  lines.push({ label: '合計(無人+移動)', cls: 'row-strong', fn: r => r.total });
-  // 月ごとに集計(上期=3〜8月、下期=9〜2月)
-  const cols = [...months.slice(0, 6), 'H1', ...months.slice(6), 'H2'];
-  function val(line, col) {
-    if (col === 'H1') return months.slice(0, 6).reduce((a, m) => a + val(line, m), 0);
-    if (col === 'H2') return months.slice(6).reduce((a, m) => a + val(line, m), 0);
-    return rows.filter(r => r.date.slice(0, 7) === col).reduce((a, r) => a + line.fn(r), 0);
+  L.push({ label: '合計(無人+移動)', cls: 'row-strong', get: a => a.total });
+  return L;
+}
+
+// ----- 棒グラフ(SVG)。series: [{name, color, values}] -----
+// 目盛りの上限ときざみ(切りのいい数字になるように)
+function niceScale(v) {
+  if (v <= 0) return { max: 1, ticks: 4 };
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  const m = v / p;
+  const step = m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10;
+  return { max: step * p, ticks: step === 2 ? 4 : 5 };
+}
+function barPath(x, y, w, h, r) {
+  if (h <= 0) return '';
+  r = Math.min(r, w / 2, h);
+  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+}
+function barChart(o) {
+  const labels = o.labels, series = o.series, stacked = !!o.stacked;
+  const W = Math.max(320, o.width || 680), H = o.height || (W < 500 ? 200 : 240), pl = 42, pr = 6, pt = 12, pb = 24;
+  const n = labels.length;
+  const totals = labels.map((_, i) => stacked ? series.reduce((a, s) => a + Math.max(0, s.values[i] || 0), 0) : Math.max(0, ...series.map(s => s.values[i] || 0)));
+  const sc = niceScale(Math.max(...totals, 0)), max = sc.max;
+  const ih = H - pt - pb, band = (W - pl - pr) / n;
+  const y = v => pt + ih - (v / max) * ih;
+  let g = '';
+  for (let t = 0; t <= sc.ticks; t++) {
+    const v = max * t / sc.ticks, yy = y(v);
+    g += `<line class="grid" x1="${pl}" x2="${W - pr}" y1="${yy}" y2="${yy}"/><text class="axis-label" x="${pl - 6}" y="${yy + 4}" text-anchor="end">${shortYen(v)}</text>`;
   }
-  const totalAll = rows.reduce((a, r) => a + r.total, 0);
-  const aquaAll = rows.reduce((a, r) => a + r.aquaNet, 0);
-  const friendsAll = rows.reduce((a, r) => a + r.friends, 0);
-  document.getElementById('y-stats').innerHTML = `
-    <div class="stat-box"><div class="stat-label">年度の売上合計</div><div class="stat-value">${yen(totalAll)}</div></div>
-    <div class="stat-box accent"><div class="stat-label">アクア</div><div class="stat-value">${yen(aquaAll)}</div></div>
-    <div class="stat-box gold"><div class="stat-label">知り合い</div><div class="stat-value">${yen(friendsAll)}</div></div>`;
-  const wrap = document.getElementById('y-table');
-  if (rows.length === 0) { wrap.innerHTML = '<div class="empty-state">この年度の記録はありません</div>'; return; }
-  const colLabel = c => c === 'H1' ? '上期' : c === 'H2' ? '下期' : parseInt(c.slice(5), 10) + '月';
-  wrap.innerHTML = `<table class="fixed-table">
-    <colgroup><col style="width:170px">${cols.map(() => '<col style="width:108px">').join('')}<col style="width:120px"></colgroup>
-    <thead><tr><th class="col-first">項目</th>${cols.map(c => `<th class="num">${colLabel(c)}</th>`).join('')}<th class="col-last num">通期</th></tr></thead>
-    <tbody>${lines.map(l => {
-      const vals = cols.map(c => val(l, c));
-      const fy = val(l, 'H1') + val(l, 'H2');
-      return `<tr class="${l.cls}"><td class="col-first">${escapeHtml(l.label)}</td>${vals.map((v, i) => `<td class="num ${cols[i].length === 2 ? 'col-half' : ''} ${v < 0 ? 'neg' : ''}">${v ? yen(v) : '-'}</td>`).join('')}<td class="col-last num">${fy ? yen(fy) : '-'}</td></tr>`;
-    }).join('')}</tbody></table>`;
+  labels.forEach((lb, i) => {
+    const x0 = pl + band * i;
+    const tip = `<div class="t">${escapeHtml(o.tipTitle ? o.tipTitle(i) : lb)}</div>` + series.map(s => `<div><i style="background:${s.color}"></i>${escapeHtml(s.name)} ${yen(s.values[i] || 0)}</div>`).join('') + (stacked && series.length > 1 ? `<div>合計 ${yen(totals[i])}</div>` : '');
+    g += `<rect class="band" x="${x0}" y="${pt}" width="${band}" height="${ih}" fill="transparent" data-tip="${escapeHtml(tip)}"/>`;
+    if (stacked) {
+      const bw = Math.min(band * 0.62, 44), bx = x0 + (band - bw) / 2;
+      let base = 0;
+      const vis = series.map(s => Math.max(0, s.values[i] || 0));
+      const topIdx = vis.reduce((t, v, k) => v > 0 ? k : t, -1);
+      series.forEach((s, k) => {
+        const v = vis[k]; if (!v) return;
+        const yTop = y(base + v), yBot = y(base);
+        const h = yBot - yTop - (base > 0 ? 2 : 0); // 2pxのすき間
+        g += k === topIdx ? `<path d="${barPath(bx, yTop, bw, h, 4)}" fill="${s.color}" pointer-events="none"/>` : `<rect x="${bx}" y="${yTop}" width="${bw}" height="${Math.max(0, h)}" fill="${s.color}" pointer-events="none"/>`;
+        base += v;
+      });
+    } else {
+      const gw = Math.min(band * 0.7, 26 * series.length), bw = gw / series.length - (series.length > 1 ? 2 : 0), bx0 = x0 + (band - gw) / 2;
+      series.forEach((s, k) => {
+        const v = Math.max(0, s.values[i] || 0); if (!v) return;
+        g += `<path d="${barPath(bx0 + k * (bw + 2), y(v), bw, y(0) - y(v), 4)}" fill="${s.color}" pointer-events="none"/>`;
+      });
+    }
+    g += `<text class="axis-label" x="${x0 + band / 2}" y="${H - 8}" text-anchor="middle">${escapeHtml(lb)}</text>`;
+  });
+  const legend = series.length > 1 ? `<div class="chart-legend">${series.map(s => `<span><i style="background:${s.color}"></i>${escapeHtml(s.name)}</span>`).join('')}</div>` : '';
+  return `<div class="chart">${legend}<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(o.title || 'グラフ')}">${g}</svg></div>`;
+}
+// 横棒(内訳用)
+function hbarChart(items, color) {
+  const max = Math.max(...items.map(x => x.value), 1);
+  return `<div class="chart">${items.map(x => `<div class="bar-row" data-tip="${escapeHtml('<div class="t">' + escapeHtml(x.label) + '</div><div>' + yen(x.value) + (x.share !== undefined ? '(' + x.share + ')' : '') + '</div>')}">
+    <div class="bar-label" title="${escapeHtml(x.label)}">${escapeHtml(x.label)}</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${Math.max(1, x.value / max * 100)}%; background:${color};"></div></div>
+    <div class="bar-value">${yen(x.value)}</div></div>`).join('')}</div>`;
+}
+// ツールチップ
+(function initChartTip() {
+  const tip = document.getElementById('chart-tip');
+  document.addEventListener('mousemove', e => {
+    const t = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!t) { tip.style.display = 'none'; return; }
+    tip.innerHTML = t.getAttribute('data-tip');
+    tip.style.display = 'block';
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    let x = e.clientX + 14, yy = e.clientY + 14;
+    if (x + w > window.innerWidth - 8) x = e.clientX - w - 14;
+    if (yy + h > window.innerHeight - 8) yy = e.clientY - h - 14;
+    tip.style.left = x + 'px'; tip.style.top = yy + 'px';
+  });
+  document.addEventListener('touchstart', e => {
+    const t = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!t) { tip.style.display = 'none'; return; }
+    tip.innerHTML = t.getAttribute('data-tip');
+    tip.style.display = 'block';
+    const r = t.getBoundingClientRect();
+    tip.style.left = Math.max(8, Math.min(window.innerWidth - tip.offsetWidth - 8, r.left)) + 'px';
+    tip.style.top = Math.max(8, r.top - tip.offsetHeight - 8) + 'px';
+  }, { passive: true });
+})();
+
+// ----- 切り替え -----
+document.querySelectorAll('#a-mode .seg-btn').forEach(b => b.addEventListener('click', () => {
+  aView = b.dataset.view;
+  document.querySelectorAll('#a-mode .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+  renderAnalysis();
+}));
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (activeTab() === 'summary') renderAnalysis(); }, 250);
+});
+function renderAnalysis() {
+  ['month', 'weekday', 'compare', 'range'].forEach(v => { document.getElementById('view-' + v).style.display = v === aView ? 'block' : 'none'; });
+  document.getElementById('a-year-card').style.display = (aView === 'month' || aView === 'weekday') ? 'block' : 'none';
+  if (aView === 'month') renderYear();
+  if (aView === 'weekday') renderWeekday();
+  if (aView === 'compare') renderCompare();
+  if (aView === 'range') renderRange();
   applyZoom();
 }
-document.getElementById('y-prev').addEventListener('click', () => { yFY--; renderYear(); });
-document.getElementById('y-next').addEventListener('click', () => { yFY++; renderYear(); });
+function renderYearHeader() {
+  document.getElementById('y-title').textContent = yFY + '年度(' + yFY + '年3月〜' + (yFY + 1) + '年2月)';
+  const { from, to } = fyRange(yFY);
+  const { rows } = aquaRows(from, to);
+  const A = aggregate(rows);
+  document.getElementById('y-stats').innerHTML = `
+    <div class="stat-box"><div class="stat-label">年度の売上合計</div><div class="stat-value">${yen(A.total)}</div></div>
+    <div class="stat-box"><div class="stat-label">無人販売合計</div><div class="stat-value">${yen(A.uTotal)}</div></div>
+    <div class="stat-box"><div class="stat-label">移動販売合計</div><div class="stat-value">${yen(A.mTotal)}</div></div>
+    <div class="stat-box accent"><div class="stat-label">アクア(無人+移動)</div><div class="stat-value">${yen(A.uAqua + A.mAqua)}</div></div>
+    <div class="stat-box"><div class="stat-label">営業日数(無人)</div><div class="stat-value">${A.days}日</div></div>`;
+}
+
+// ----- 月別 -----
+function renderYear() {
+  renderYearHeader();
+  const { months, from, to } = fyRange(yFY);
+  const { rows, otherIds } = aquaRows(from, to);
+  const monthAgg = {};
+  months.forEach(m => { monthAgg[m] = aggregate(rows.filter(r => r.date.slice(0, 7) === m)); });
+  const aggOf = list => aggregate(rows.filter(r => list.indexOf(r.date.slice(0, 7)) !== -1));
+  const H1 = aggOf(months.slice(0, 6)), H2 = aggOf(months.slice(6)), FY = aggregate(rows);
+  const mLabel = m => parseInt(m.slice(5), 10) + '月';
+  document.getElementById('y-chart').innerHTML = rows.length ? barChart({ width: document.getElementById('y-chart').clientWidth,
+    labels: months.map(mLabel), stacked: true, title: '月ごとの売上',
+    tipTitle: i => months[i].slice(0, 4) + '年' + mLabel(months[i]),
+    series: [{ name: '無人販売', color: 'var(--c1)', values: months.map(m => monthAgg[m].uTotal) }, { name: '移動販売', color: 'var(--c2)', values: months.map(m => monthAgg[m].mTotal) }]
+  }) : '<div class="empty-state">この年度の記録はありません</div>';
+  const wrap = document.getElementById('y-table');
+  if (rows.length === 0) { wrap.innerHTML = '<div class="empty-state">この年度の記録はありません</div>'; return; }
+  const lines = lineDefs(Object.values(monthAgg), otherIds);
+  const cols = [...months.slice(0, 6).map(m => ({ label: mLabel(m), a: monthAgg[m] })), { label: '上期', a: H1, half: true }, ...months.slice(6).map(m => ({ label: mLabel(m), a: monthAgg[m] })), { label: '下期', a: H2, half: true }];
+  wrap.innerHTML = `<table class="fixed-table">
+    <colgroup><col style="width:150px">${cols.map(() => '<col style="width:104px">').join('')}<col style="width:120px"></colgroup>
+    <thead><tr><th class="col-first">項目</th>${cols.map(c => `<th class="num">${c.label}</th>`).join('')}<th class="col-last num">通期</th></tr></thead>
+    <tbody>${lines.map(l => `<tr class="${l.cls}"><td class="col-first">${escapeHtml(l.label)}</td>${cols.map(c => { const v = l.get(c.a); return `<td class="num ${c.half ? 'col-half' : ''} ${v < 0 ? 'neg' : ''}">${v ? yen(v) : '-'}</td>`; }).join('')}<td class="col-last num">${l.get(FY) ? yen(l.get(FY)) : '-'}</td></tr>`).join('')}
+    <tr><td class="col-first">営業日数(無人)</td>${cols.map(c => `<td class="num ${c.half ? 'col-half' : ''}">${c.a.days ? c.a.days + '日' : '-'}</td>`).join('')}<td class="col-last num">${FY.days}日</td></tr>
+    <tr><td class="col-first">1日平均(無人)</td>${cols.map(c => `<td class="num ${c.half ? 'col-half' : ''}">${c.a.days ? yen(c.a.uTotal / c.a.days) : '-'}</td>`).join('')}<td class="col-last num">${FY.days ? yen(FY.uTotal / FY.days) : '-'}</td></tr>
+    </tbody></table>`;
+}
+document.getElementById('y-prev').addEventListener('click', () => { yFY--; renderAnalysis(); });
+document.getElementById('y-next').addEventListener('click', () => { yFY++; renderAnalysis(); });
+
+// ----- 曜日別 -----
+function renderWeekday() {
+  renderYearHeader();
+  const { months, from, to } = fyRange(yFY);
+  const sel = document.getElementById('w-month');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">年度全体</option>' + months.map(m => `<option value="${m}">${m.slice(0, 4)}年${parseInt(m.slice(5), 10)}月</option>`).join('');
+  if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  const { rows } = aquaRows(from, to);
+  const target = rows.filter(r => !sel.value || r.date.slice(0, 7) === sel.value);
+  const order = ['月', '火', '水', '木', '金', '土', '日'];
+  const data = order.map(w => {
+    const u = target.filter(r => !r.mobile && weekdayOf(r.date) === w && r.total && !(r.closed && !r.total));
+    const m = target.filter(r => r.mobile && weekdayOf(r.date) === w);
+    const sum = f => u.reduce((a, r) => a + r[f], 0);
+    return { w, days: u.length, total: sum('total'), aqua: sum('aquaNet'), paypay: sum('paypay'), friends: sum('friends'), mCount: m.length, mTotal: m.reduce((a, r) => a + r.total, 0) };
+  });
+  const avg = (d, f) => d.days ? d[f] / d.days : 0;
+  document.getElementById('w-chart').innerHTML = data.some(d => d.days) ? barChart({ width: document.getElementById('w-chart').clientWidth,
+    labels: order, title: '曜日ごとの1日平均', height: 220,
+    tipTitle: i => order[i] + '曜日(' + data[i].days + '日)',
+    series: [{ name: '1日平均', color: 'var(--c1)', values: data.map(d => avg(d, 'total')) }]
+  }) : '<div class="empty-state">記録がありません</div>';
+  const all = data.reduce((a, d) => { Object.keys(d).forEach(k => { if (k !== 'w') a[k] = (a[k] || 0) + d[k]; }); return a; }, {});
+  document.getElementById('w-table').innerHTML = `<table class="fixed-table">
+    <colgroup><col style="width:80px"><col style="width:80px"><col style="width:120px"><col style="width:110px"><col style="width:110px"><col style="width:110px"><col style="width:110px"><col style="width:100px"><col style="width:120px"></colgroup>
+    <thead><tr><th class="col-first">曜日</th><th class="num">営業日数</th><th class="num">単日合計</th><th class="num">1日平均</th><th class="num">アクア平均</th><th class="num">知り合い平均</th><th class="num">PayPay平均</th><th class="num">移動販売</th><th class="col-last num">移動販売合計</th></tr></thead>
+    <tbody>${data.concat([Object.assign({ w: '合計', total: 0 }, all)]).map((d, i) => `<tr class="${i === 7 ? 'row-total' : ''}"><td class="col-first">${d.w}</td><td class="num">${d.days}日</td><td class="num">${yen(d.total)}</td><td class="num">${d.days ? yen(avg(d, 'total')) : '-'}</td><td class="num">${d.days ? yen(avg(d, 'aqua')) : '-'}</td><td class="num">${d.days ? yen(avg(d, 'friends')) : '-'}</td><td class="num">${d.days ? yen(avg(d, 'paypay')) : '-'}</td><td class="num">${d.mCount ? d.mCount + '回' : '-'}</td><td class="col-last num">${d.mTotal ? yen(d.mTotal) : '-'}</td></tr>`).join('')}</tbody></table>`;
+}
+document.getElementById('w-month').addEventListener('change', renderWeekday);
+
+// ----- 比較(前月・前年同月) -----
+let cYear = new Date().getFullYear(), cMonth = new Date().getMonth() + 1;
+function diffCell(cur, base) {
+  if (!base && !cur) return '<td class="num">-</td>';
+  if (!base) return '<td class="num"><span class="hint">比較なし</span></td>';
+  const d = cur - base;
+  return `<td class="num"><span class="${d >= 0 ? 'diff-up' : 'diff-down'}">${d >= 0 ? '▲' : '▼'}${yen(Math.abs(d))}</span><br><span class="hint">${pct(d / Math.abs(base) * 100)}</span></td>`;
+}
+function renderCompare() {
+  document.getElementById('c-title').textContent = cYear + '年' + cMonth + '月';
+  const agg = (y, m) => { const [f, t] = monthRange(y, m); return aquaRows(f, t); };
+  const cur = agg(cYear, cMonth), [py, pm] = stepMonth(cYear, cMonth, -1), prev = agg(py, pm), last = agg(cYear - 1, cMonth);
+  const otherIds = cur.otherIds;
+  const A = aggregate(cur.rows), P = aggregate(prev.rows), Y = aggregate(last.rows);
+  const lines = lineDefs([A, P, Y], otherIds);
+  lines.push({ label: '営業日数(無人)', cls: '', get: a => a.days, days: true });
+  lines.push({ label: '1日平均(無人)', cls: '', get: a => a.days ? Math.round(a.uTotal / a.days) : 0 });
+  const fmt = (l, v) => l.days ? (v ? v + '日' : '-') : (v ? yen(v) : '-');
+  document.getElementById('c-table').innerHTML = `<table class="fixed-table">
+    <colgroup><col style="width:150px"><col style="width:115px"><col style="width:115px"><col style="width:120px"><col style="width:115px"><col style="width:120px"></colgroup>
+    <thead><tr><th class="col-first">項目</th><th class="num">${cMonth}月</th><th class="num">前月(${pm}月)</th><th class="num">前月比</th><th class="num">前年(${cYear - 1}年${cMonth}月)</th><th class="num">前年比</th></tr></thead>
+    <tbody>${lines.map(l => { const c = l.get(A), p = l.get(P), y = l.get(Y); return `<tr class="${l.cls}"><td class="col-first">${escapeHtml(l.label)}</td><td class="num">${fmt(l, c)}</td><td class="num">${fmt(l, p)}</td>${l.days ? `<td class="num">${c - p ? (c - p > 0 ? '+' : '') + (c - p) + '日' : '-'}</td>` : diffCell(c, p)}<td class="num">${fmt(l, y)}</td>${l.days ? `<td class="num">${y ? ((c - y > 0 ? '+' : '') + (c - y) + '日') : '-'}</td>` : diffCell(c, y)}</tr>`; }).join('')}</tbody></table>`;
+  // グラフ:この月が入っている年度と前年度を月ごとに
+  const fy = fiscalYearOf(cYear + '-' + pad2(cMonth) + '-01');
+  const cr = fyRange(fy), pr = fyRange(fy - 1);
+  const cRows = aquaRows(cr.from, cr.to).rows, pRows = aquaRows(pr.from, pr.to).rows;
+  const byM = (rows, m) => rows.filter(r => r.date.slice(5, 7) === m.slice(5, 7)).reduce((a, r) => a + r.total, 0);
+  document.getElementById('c-chart-title').textContent = fy + '年度と' + (fy - 1) + '年度(月ごとの合計)';
+  document.getElementById('c-chart').innerHTML = barChart({ width: document.getElementById('c-chart').clientWidth,
+    labels: cr.months.map(m => parseInt(m.slice(5), 10) + '月'), title: '今年度と前年度',
+    series: [{ name: fy + '年度', color: 'var(--c1)', values: cr.months.map(m => byM(cRows, m)) }, { name: (fy - 1) + '年度', color: 'var(--c2)', values: pr.months.map(m => byM(pRows, m)) }]
+  }) + (pRows.length ? '' : '<p class="hint" style="margin:6px 0 0;">' + (fy - 1) + '年度のデータはまだありません。来年度から前年との比較が出ます。</p>');
+}
+document.getElementById('c-prev').addEventListener('click', () => { [cYear, cMonth] = stepMonth(cYear, cMonth, -1); renderCompare(); applyZoom(); });
+document.getElementById('c-next').addEventListener('click', () => { [cYear, cMonth] = stepMonth(cYear, cMonth, 1); renderCompare(); applyZoom(); });
+
+// ----- 期間指定 -----
+function setRange(q) {
+  const t = todayStr(), [y, m] = t.split('-').map(Number), fy = fiscalYearOf(t);
+  let f, to;
+  if (q === 'thisMonth') [f, to] = monthRange(y, m);
+  if (q === 'lastMonth') { const [py, pm] = stepMonth(y, m, -1); [f, to] = monthRange(py, pm); }
+  if (q === 'fy') { const r = fyRange(fy); f = r.from; to = r.to; }
+  if (q === 'h1') { f = fy + '-03-01'; to = fy + '-08-31'; }
+  if (q === 'h2') { f = fy + '-09-01'; to = fyRange(fy).to; }
+  document.getElementById('r-from').value = f; document.getElementById('r-to').value = to;
+  renderRange(); applyZoom();
+}
+function renderRange() {
+  const fEl = document.getElementById('r-from'), tEl = document.getElementById('r-to');
+  if (!fEl.value || !tEl.value) { const [f, t] = monthRange(new Date().getFullYear(), new Date().getMonth() + 1); fEl.value = f; tEl.value = t; }
+  let from = fEl.value, to = tEl.value;
+  if (from > to) { const x = from; from = to; to = x; }
+  const { rows, otherIds } = aquaRows(from, to);
+  const A = aggregate(rows);
+  document.getElementById('r-stats').innerHTML = `
+    <div class="stat-box"><div class="stat-label">合計(無人+移動)</div><div class="stat-value">${yen(A.total)}</div></div>
+    <div class="stat-box"><div class="stat-label">無人販売合計</div><div class="stat-value">${yen(A.uTotal)}</div></div>
+    <div class="stat-box"><div class="stat-label">移動販売合計(${A.mCount}回)</div><div class="stat-value">${yen(A.mTotal)}</div></div>
+    <div class="stat-box"><div class="stat-label">営業日数(無人)</div><div class="stat-value">${A.days}日</div></div>
+    <div class="stat-box"><div class="stat-label">1日平均(無人)</div><div class="stat-value">${A.days ? yen(A.uTotal / A.days) : '-'}</div></div>`;
+  const share = v => A.total ? (Math.round(v / A.total * 1000) / 10).toFixed(1) + '%' : '-';
+  const items = [{ label: 'アクア(無人)', value: A.uAqua }]
+    .concat(Object.keys(A.sellers).filter(id => A.sellers[id]).sort((a, b) => sellerOrder(a) - sellerOrder(b)).map(id => ({ label: sellerName(id), value: A.sellers[id] })))
+    .concat(otherIds.filter(id => A.other[id]).map(id => ({ label: placeName(id), value: A.other[id] })))
+    .concat([{ label: 'PayPay(無人)', value: A.uPaypay }, { label: 'アクア(移動)', value: A.mAqua }, { label: 'PayPay(移動)', value: A.mPaypay }])
+    .filter(x => x.value);
+  items.forEach(x => { x.share = share(x.value); });
+  document.getElementById('r-chart').innerHTML = items.length ? hbarChart(items, 'var(--c1)') : '<div class="empty-state">この期間の記録はありません</div>';
+  const lines = lineDefs([A], otherIds);
+  document.getElementById('r-table').innerHTML = rows.length ? `<table class="fixed-table">
+    <colgroup><col style="width:160px"><col style="width:130px"><col style="width:100px"></colgroup>
+    <thead><tr><th class="col-first">項目</th><th class="num">金額</th><th class="num">構成比</th></tr></thead>
+    <tbody>${lines.map(l => { const v = l.get(A); return `<tr class="${l.cls}"><td class="col-first">${escapeHtml(l.label)}</td><td class="num">${v ? yen(v) : '-'}</td><td class="num">${v ? share(v) : '-'}</td></tr>`; }).join('')}</tbody></table>` : '';
+}
+document.getElementById('r-from').addEventListener('change', () => { renderRange(); applyZoom(); });
+document.getElementById('r-to').addEventListener('change', () => { renderRange(); applyZoom(); });
+document.querySelectorAll('#r-quick [data-q]').forEach(b => b.addEventListener('click', () => setRange(b.dataset.q)));
 
 // ===== 表の拡大縮小 =====
 let zoomLevel = 100;
