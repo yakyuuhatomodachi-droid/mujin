@@ -129,6 +129,10 @@
   .fixed-table td.col-half { background: var(--bg); font-weight: 500; }
   .fixed-table tr.row-total td { font-weight: 700; background: var(--bg); }
   .fixed-table td.neg { color: var(--danger); }
+  /* 表の文字は真ん中揃え(金額の列は右揃えのまま) */
+  .fixed-table th, .fixed-table td { text-align: center; }
+  .fixed-table th.num, .fixed-table td.num { text-align: right; }
+  .fixed-table tr.row-sub td.col-first { padding-left: 10px; }
   .fixed-table td.sun { color: var(--danger); }
   .fixed-table td.sat { color: #2F6FD0; }
   .fixed-table td.closed-cell { text-align: center; letter-spacing: 1em; color: var(--text-secondary); background: var(--bg); font-weight: 500; }
@@ -214,9 +218,10 @@
   .rp-table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
   .rp-table th, .rp-table td { border: 1px solid #bbb; padding: 2px 5px; white-space: nowrap; }
   .rp-table th { background: #E6EDF5; font-weight: 500; }
+  .rp-table th, .rp-table td { text-align: center; }
   .rp-table td.num, .rp-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .rp-table tr.strong td { font-weight: 700; background: #EEF3F9; }
-  .rp-table tr.sub td:first-child { padding-left: 14px; }
+  .rp-table tr.sub td:first-child { color: #555; }
   .rp-table td.half { background: #F4F6F9; }
   .rp-table tr.total td { font-weight: 700; background: #E6EDF5; }
   .rp-table td.closed { text-align: center; color: #777; letter-spacing: 1em; background: #F4F6F9; }
