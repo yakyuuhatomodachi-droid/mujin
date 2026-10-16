@@ -128,6 +128,8 @@
   .fixed-table td.col-half { background: var(--bg); font-weight: 500; }
   .fixed-table tr.row-total td { font-weight: 700; background: var(--bg); }
   .fixed-table td.neg { color: var(--danger); }
+  .fixed-table td.sun { color: var(--danger); }
+  .fixed-table td.sat { color: #3B62B5; }
   .fixed-table td.closed-cell { text-align: center; letter-spacing: 1em; color: var(--text-secondary); background: var(--bg); font-weight: 500; }
   .fixed-table tr.clickable { cursor: pointer; }
   .fixed-table td[data-edit] { cursor: text; }
@@ -1223,13 +1225,29 @@ function aquaRows(from, to) {
   });
   return { rows, otherIds, mainPlace };
 }
+// 1か月分すべての日の行をそろえる(記録のない日は空の行)
+function fillMonthRows(rows, from, to) {
+  const out = rows.slice();
+  for (let d = from; d <= to; d = addDays(d, 1)) {
+    if (!rows.some(r => r.date === d && !r.mobile)) {
+      out.push({ date: d, mobile: false, empty: true, placeIds: [], label: '無人販売', events: [], placeCash: {}, cash: 0, paypay: 0, sellers: {}, notes: [], warn: false, closed: false, total: 0, friends: 0, aqua: 0, aquaTotal: 0, aquaNet: 0 });
+    }
+  }
+  return out.sort((a, b) => a.date !== b.date ? (a.date < b.date ? -1 : 1) : (a.mobile - b.mobile));
+}
+function addDays(dateStr, n) {
+  const d = parseDateOnly(dateStr);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate());
+}
 function renderDaily() {
   const [from, to] = monthRange(dYear, dMonth);
   const now = new Date();
   document.getElementById('d-title').textContent = dYear + '年' + dMonth + '月';
   document.getElementById('d-jump').style.display = (dYear === now.getFullYear() && dMonth === now.getMonth() + 1) ? 'none' : 'inline-block';
   // 列の並びはExcelに合わせる:日付・アクア合計・アクア・知り合い(人ごと)・幸福駅など・PayPay・単日合計・備考
-  const { rows, otherIds, mainPlace } = aquaRows(from, to);
+  const { otherIds, mainPlace } = aquaRows(from, to);
+  const rows = fillMonthRows(aquaRows(from, to).rows, from, to); // 記録のない日も1行ずつ出す
   const sum = f => rows.reduce((a, r) => a + r[f], 0);
   const otherSum = id => rows.reduce((a, r) => a + (r.mobile ? 0 : (r.placeCash[id] || 0)), 0);
   // 知り合いは人ごとに列を出す(その月0円の人は出さない)。並びはマスタの出品者の順
@@ -1260,14 +1278,14 @@ function renderDaily() {
     <tbody>${rows.map((r, i) => r.closed && !r.total && !r.friends
       ? `<tr class="clickable" data-idx="${i}"><td class="col-first">${fmtMD(r.date)}</td><td class="closed-cell" colspan="${4 + sIds.length + otherIds.length}">休み</td><td class="col-last"></td></tr>`
       : `<tr class="clickable" data-idx="${i}">
-      <td class="col-first">${fmtMD(r.date)}${r.mobile ? '<br><span class="hint">移動販売' + (r.events.length ? '・' + escapeHtml(r.events.join('・')) : '') + '</span>' : ''}</td>
+      <td class="col-first ${weekdayOf(r.date) === '日' ? 'sun' : weekdayOf(r.date) === '土' ? 'sat' : ''}">${fmtMD(r.date)}${r.mobile ? '<br><span class="hint">移動販売' + (r.events.length ? '・' + escapeHtml(r.events.join('・')) : '') + '</span>' : ''}</td>
       <td class="num" ${ed(r, i, 'cash', mainFor(r))}>${v(r.aquaTotal)}</td>
       <td class="num ${r.aquaNet < 0 ? 'neg' : ''}">${v(r.aquaNet)}${r.warn ? '<br><span class="warn-text">要確認</span>' : ''}</td>
       ${sIds.map(id => `<td class="num" ${ed(r, i, 'seller', mainFor(r), id)}>${v(r.sellers[id])}</td>`).join('')}
       ${otherIds.map(id => `<td class="num" ${r.mobile ? '' : ed(r, i, 'cash', id)}>${r.mobile ? '' : v(r.placeCash[id])}</td>`).join('')}
       <td class="num" ${ed(r, i, 'paypay', payFor(r))}>${v(r.paypay)}</td>
       <td style="white-space:normal;" ${ed(r, i, 'note', mainFor(r))}>${escapeHtml((r.closed ? ['休み'] : []).concat(r.notes).join(' / '))}</td>
-      <td class="col-last num">${yen(r.total)}</td>
+      <td class="col-last num">${r.empty ? '' : yen(r.total)}</td>
     </tr>`).join('')}</tbody>
     <tfoot><tr class="row-total"><td class="col-first">合計</td><td class="num">${yen(sum('aquaTotal'))}</td><td class="num">${yen(sum('aquaNet'))}</td>${sIds.map(id => `<td class="num">${yen(sellerSum[id])}</td>`).join('')}${otherIds.map(id => `<td class="num">${yen(otherSum(id))}</td>`).join('')}<td class="num">${yen(sum('paypay'))}</td><td></td><td class="col-last num">${yen(sum('total'))}</td></tr></tfoot>
   </table>`;
@@ -1276,7 +1294,16 @@ function renderDaily() {
     const td = e.target.closest('td');
     if (!td || td.querySelector('input')) return;
     if (td.dataset.edit) { startCellEdit(td, rows[parseInt(td.dataset.idx, 10)]); return; }
-    openDetail(rows[parseInt(tr.dataset.idx, 10)]);
+    const row = rows[parseInt(tr.dataset.idx, 10)];
+    if (row.empty) { // 記録のない日:上の入力欄にその日付を入れる
+      setSaleMode('unmanned'); resetSaleForm();
+      document.getElementById('s-date').value = row.date;
+      updateDayNotice();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast(fmtMD(row.date) + 'の入力欄を開きました');
+      return;
+    }
+    openDetail(row);
   }));
   applyZoom();
 }
@@ -1941,7 +1968,8 @@ function rpHead(title, sub) {
 // 月間レポート(A4縦)
 function printMonth() {
   const [from, to] = monthRange(dYear, dMonth);
-  const { rows, otherIds, mainPlace } = aquaRows(from, to);
+  const { otherIds, mainPlace } = aquaRows(from, to);
+  const rows = fillMonthRows(aquaRows(from, to).rows, from, to); // 記録のない日も1行ずつ出す
   const A = aggregate(rows);
   const sellerSum = {};
   rows.forEach(r => Object.keys(r.sellers).forEach(id => { sellerSum[id] = (sellerSum[id] || 0) + r.sellers[id]; }));
@@ -1966,7 +1994,7 @@ function printMonth() {
   html += `<div class="rp-section">日別一覧</div><table class="rp-table"><thead><tr><th>日付</th><th class="num">アクア合計</th><th class="num">アクア</th>${sIds.map(id => `<th class="num">${escapeHtml(sellerName(id))}</th>`).join('')}${otherIds.map(id => `<th class="num">${escapeHtml(placeName(id))}</th>`).join('')}<th class="num">PayPay</th><th>備考</th><th class="num">単日合計</th></tr></thead><tbody>${
     rows.map(r => (r.closed && !r.total && !r.friends)
       ? `<tr><td>${fmtMD(r.date)}</td><td class="closed" colspan="${colsN}">休み</td><td></td></tr>`
-      : `<tr><td>${fmtMD(r.date)}${r.mobile ? ' <span style="color:#555">移動' + (r.events.length ? '・' + escapeHtml(r.events.join('・')) : '') + '</span>' : ''}</td><td class="num">${v(r.aquaTotal)}</td><td class="num ${r.aquaNet < 0 ? 'neg' : ''}">${v(r.aquaNet)}</td>${sIds.map(id => `<td class="num">${v(r.sellers[id])}</td>`).join('')}${otherIds.map(id => `<td class="num">${r.mobile ? '' : v(r.placeCash[id])}</td>`).join('')}<td class="num">${v(r.paypay)}</td><td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.notes.join(' / '))}</td><td class="num"><b>${yen(r.total)}</b></td></tr>`).join('')
+      : `<tr><td>${fmtMD(r.date)}${r.mobile ? ' <span style="color:#555">移動' + (r.events.length ? '・' + escapeHtml(r.events.join('・')) : '') + '</span>' : ''}</td><td class="num">${v(r.aquaTotal)}</td><td class="num ${r.aquaNet < 0 ? 'neg' : ''}">${v(r.aquaNet)}</td>${sIds.map(id => `<td class="num">${v(r.sellers[id])}</td>`).join('')}${otherIds.map(id => `<td class="num">${r.mobile ? '' : v(r.placeCash[id])}</td>`).join('')}<td class="num">${v(r.paypay)}</td><td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.notes.join(' / '))}</td><td class="num"><b>${r.empty ? '' : yen(r.total)}</b></td></tr>`).join('')
   }</tbody><tfoot><tr class="total"><td>合計</td><td class="num">${yen(sum('aquaTotal'))}</td><td class="num">${yen(sum('aquaNet'))}</td>${sIds.map(id => `<td class="num">${yen(sellerSum[id])}</td>`).join('')}${otherIds.map(id => `<td class="num">${yen(otherSum(id))}</td>`).join('')}<td class="num">${yen(sum('paypay'))}</td><td></td><td class="num">${yen(sum('total'))}</td></tr></tfoot></table>`;
   html += `<div class="rp-note">アクア=アクア合計−知り合いの売上(PayPay・幸福駅は含まない)。単日合計=現金+幸福駅+PayPay。</div>`;
   printReport(html, false);
