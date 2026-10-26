@@ -34,9 +34,7 @@
   .app-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
   .app-header h1 { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
   .app-header p { margin: 0; color: var(--text-secondary); font-size: 13px; }
-  .header-btns { display: flex; gap: 8px; flex-shrink: 0; }
-  #refresh-data-btn, #top-link { flex-shrink: 0; white-space: nowrap; }
-  #top-link { text-decoration: none; display: inline-flex; align-items: center; }
+  #refresh-data-btn { flex-shrink: 0; white-space: nowrap; }
   #refresh-data-btn.is-loading { opacity: 0.6; pointer-events: none; }
 
   .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); overflow-x: auto; }
@@ -240,7 +238,7 @@
   @media (max-width: 600px) {
     .app { padding: 16px 12px 40px; }
     .app-header { flex-direction: column; align-items: stretch; }
-    .header-btns { align-self: flex-start; }
+    #refresh-data-btn { align-self: flex-start; }
     .card { padding: 14px; }
     .tab-btn { padding: 10px 10px; font-size: 14px; }
   }
@@ -262,10 +260,7 @@
       <h1>アクア農園 無人販売管理</h1>
       <p>無人販売・移動販売の売上を記録します</p>
     </div>
-    <div class="header-btns">
-      <a class="btn-ghost" id="top-link" href="https://yakyuuhatomodachi-droid.github.io/">⌂ トップへ</a>
-      <button type="button" class="btn-ghost" id="refresh-data-btn">↻ 最新に更新</button>
-    </div>
+    <button type="button" class="btn-ghost" id="refresh-data-btn">↻ 最新に更新</button>
   </div>
 
   <div class="tabs">
@@ -430,12 +425,18 @@
     </div>
     <div class="card">
       <h2>バックアップ・復元</h2>
-      <p class="hint" style="margin-top:0;">すべてのデータを1つのファイルに保存できます。過去データの取り込みファイルも「バックアップから復元」で読み込みます。</p>
+      <p class="hint" style="margin-top:0;">すべてのデータを1つのファイルに保存できます。「バックアップから復元」は、今のデータをファイルの内容で<b>置き換え</b>ます。</p>
       <div class="btn-row">
         <button type="button" class="btn btn-primary" id="backup-download-btn">バックアップをダウンロード</button>
         <button type="button" class="btn-ghost" id="backup-restore-btn">バックアップから復元</button>
         <input type="file" id="backup-restore-input" accept="application/json,.json" style="display:none;">
       </div>
+    </div>
+    <div class="card">
+      <h2>過去データの追加取り込み</h2>
+      <p class="hint" style="margin-top:0;">前の年度などのデータを、<b>今のデータを残したまま追加</b>します。同じファイルを2回取り込んでも、二重にはなりません。</p>
+      <button type="button" class="btn btn-primary" id="append-import-btn">過去データを追加で取り込む</button>
+      <input type="file" id="append-import-input" accept="application/json,.json" style="display:none;">
     </div>
     <div class="card">
       <h2>ログアウト</h2>
@@ -496,7 +497,7 @@
 <script>
 // ===== 設定 =====
 // Googleスプレッドシート側(GAS)のウェブアプリURLをここに貼り付けます
-const SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzFYs1rRrNAwjXLfFSmz47PuBGfPWG8ksxGBmSI-0pPsmsij6hjJM1DNJo3IekpmOksnQ/exec';
+const SHEET_API_URL = '__YOUR_GAS_WEB_APP_URL__';
 
 // 同じGitHub Pagesの販売管理アプリとブラウザ保存が混ざらないよう、専用の名前を使う
 const PASSWORD_STORAGE_KEY = 'mujin_pw';
@@ -1943,6 +1944,67 @@ document.getElementById('backup-restore-input').addEventListener('change', async
   } catch (err) {
     prog.style.display = 'none';
     if (!err.unauthorized) showSaveModal('途中で失敗しました。通信状況を確認して、もう一度同じファイルで復元してください(何度やり直しても大丈夫です)', false);
+    await loadData();
+  }
+  renderAll();
+});
+
+// ===== 過去データの追加取り込み(今のデータは消さない) =====
+document.getElementById('append-import-btn').addEventListener('click', () => document.getElementById('append-import-input').click());
+document.getElementById('append-import-input').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  let data;
+  try { data = JSON.parse(await file.text()); } catch (err) { showSaveModal('ファイルを読み込めませんでした', false); return; }
+  if (!data || data.appName !== 'アクア農園無人販売管理' || !Array.isArray(data.sales)) { showSaveModal('このファイルは無人販売管理の取り込みファイルではないようです', false); return; }
+  if (!loadedOnce) { showSaveModal('まだ最新のデータを読み込めていません。「最新に更新」を押してからもう一度お試しください', false); return; }
+  // 販売場所:同じID → 同じ名前 → 新しく作る
+  const placeMap = {}, newPlaces = [];
+  (data.places || []).forEach(p => {
+    const ex = placeById(p.id) || places.find(x => x.name === p.name);
+    if (ex) { placeMap[p.id] = ex.id; return; }
+    const np = { id: uid() + newPlaces.length, name: p.name || '取り込んだ場所', type: p.type || (/mobile|移動/.test(p.id + p.name) ? 'mobile' : 'unmanned'), hasPayPay: p.hasPayPay !== false, allowSellers: p.allowSellers !== false, sortOrder: nextSortOrder(places) + newPlaces.length };
+    newPlaces.push(np); placeMap[p.id] = np.id;
+  });
+  // 知り合い:名前が同じ人(「さん」の有無は区別しない)にまとめる。いなければ新しく追加
+  const nm = x => String(x || '').replace(/[\s　]|さん$|様$/g, '');
+  const sellerMap = {}, newSellers = [];
+  (data.sellers || []).forEach(sl => {
+    const ex = sellers.find(x => nm(x.name) === nm(sl.name)) || newSellers.find(x => nm(x.name) === nm(sl.name));
+    if (ex) { sellerMap[sl.id] = ex.id; return; }
+    const ns = { id: uid() + 's' + newSellers.length, name: sl.name, items: [], sortOrder: nextSortOrder(sellers) + newSellers.length };
+    newSellers.push(ns); sellerMap[sl.id] = ns.id;
+  });
+  const have = {}; sales.forEach(x => { have[x.id] = true; });
+  const skipped = data.sales.filter(x => have[x.id]).length;
+  const newSales = data.sales.filter(x => !have[x.id]).map(x => Object.assign({}, x, {
+    placeId: placeMap[x.placeId] || x.placeId,
+    extras: (x.extras || []).map(t => Object.assign({}, t, { sellerId: sellerMap[t.sellerId] || t.sellerId }))
+  }));
+  if (!newSales.length) { showSaveModal('このファイルのデータは、すべて取り込み済みです' + (skipped ? '(' + skipped + '件)' : ''), true); return; }
+  const dates = newSales.map(x => x.date).sort();
+  const from = dates[0], to = dates[dates.length - 1];
+  const overlap = sales.filter(x => x.date >= from && x.date <= to).length;
+  const msg = fmtMD(from).replace(/\(.\)/, '') + '(' + from.slice(0, 4) + '年)〜' + fmtMD(to).replace(/\(.\)/, '') + '(' + to.slice(0, 4) + '年)の売上 ' + newSales.length + '件を追加します。'
+    + (newSellers.length ? '\n新しく追加する知り合い:' + newSellers.map(x => x.name).join('、') : '')
+    + (newPlaces.length ? '\n新しく追加する販売場所:' + newPlaces.map(x => x.name).join('、') : '')
+    + (skipped ? '\n(取り込み済みの ' + skipped + '件は飛ばします)' : '')
+    + (overlap ? '\n\n⚠ この期間には、すでに ' + overlap + '件の記録があります。同じ日の分を取り込むと金額が二重になります。' : '')
+    + '\n今のデータは消えません。';
+  if (!(await showConfirm(msg, '追加する'))) return;
+  const pairs = [].concat(newPlaces.map(r => [keyOf('place', r), JSON.stringify(r)]), newSellers.map(r => [keyOf('seller', r), JSON.stringify(r)]), newSales.map(r => [keyOf('sale', r), JSON.stringify(r)]));
+  const prog = document.getElementById('progress-modal'), pm = document.getElementById('progress-message');
+  prog.style.display = 'flex';
+  try {
+    await sheetStorage.batch('setBatch', pairs, (done, all) => { pm.textContent = done + ' / ' + all + ' 件'; });
+    places = places.concat(newPlaces); sellers = sellers.concat(newSellers); sales = sales.concat(newSales);
+    sortMasters(); saveToCache();
+    prog.style.display = 'none';
+    showSaveModal('追加しました(売上 ' + newSales.length + '件' + (newSellers.length ? '・知り合い ' + newSellers.length + '人' : '') + ')', true);
+  } catch (err) {
+    prog.style.display = 'none';
+    if (!err.unauthorized) showSaveModal('途中で失敗しました。もう一度同じファイルで取り込んでください(取り込み済みの分は飛ばすので、二重にはなりません)', false);
     await loadData();
   }
   renderAll();
