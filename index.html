@@ -251,6 +251,8 @@
   .rp-table td.closed { text-align: center; color: #777; letter-spacing: 1em; background: #F4F6F9; }
   .rp-table .neg { color: #A9432E; }
   .rp .chart .axis-label { font-size: 10px; }
+  .rp-group { width: 100%; font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 5px; }
+  .rp-group i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
   .rp-note { font-size: 10px; color: #555; margin-top: 6px; }
   @media print {
     body { background: #fff !important; border-top: 0 !important; }
@@ -1332,6 +1334,37 @@ function addDays(dateStr, n) {
   d.setUTCDate(d.getUTCDate() + n);
   return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate());
 }
+// 売上入力の月の合計:無人販売と移動販売を分ける
+function dailyFootRows(rows) {
+  const make = (label, rs, mobile) => ({
+    label, mobile,
+    sum: f => rs.reduce((a, r) => a + (r[f] || 0), 0),
+    seller: id => rs.reduce((a, r) => a + (r.sellers[id] || 0), 0),
+    other: id => rs.reduce((a, r) => a + (r.placeCash[id] || 0), 0)
+  });
+  const u = rows.filter(r => !r.mobile), m = rows.filter(r => r.mobile);
+  const out = [make('無人販売 計', u, false)];
+  if (m.length) out.push(make('移動販売 計', m, true));
+  return out;
+}
+function dailySplitStats(rows, otherIds) {
+  const box = (label, value, cls) => `<div class="stat-box ${cls || ''}"><div class="stat-label">${escapeHtml(label)}</div><div class="stat-value">${value}</div></div>`;
+  const group = (title, color, rs, mobile) => {
+    const sum = f => rs.reduce((a, r) => a + (r[f] || 0), 0);
+    const ss = {};
+    rs.forEach(r => Object.keys(r.sellers).forEach(id => { ss[id] = (ss[id] || 0) + r.sellers[id]; }));
+    const ids = Object.keys(ss).filter(id => ss[id]).sort((a, b) => sellerOrder(a) - sellerOrder(b));
+    const oth = id => rs.reduce((a, r) => a + (r.placeCash[id] || 0), 0);
+    return `<div class="stat-group-label"${mobile ? ' style="margin-top:12px;"' : ''}><i style="background:${color}"></i>${title}</div>`
+      + box(mobile ? '移動販売合計(' + rs.length + '回)' : '単日合計の月計', yen(sum('total')))
+      + box('アクア合計', yen(sum('aquaTotal'))) + box('アクア', yen(sum('aquaNet')), 'accent')
+      + ids.map(id => box(sellerName(id), yen(ss[id]), 'gold')).join('')
+      + (mobile ? '' : otherIds.filter(id => oth(id)).map(id => box(placeName(id), yen(oth(id)))).join(''))
+      + box('PayPay', yen(sum('paypay')));
+  };
+  const m = rows.filter(r => r.mobile);
+  return group('無人販売', 'var(--c1)', rows.filter(r => !r.mobile), false) + (m.length ? group('移動販売', 'var(--c2)', m, true) : '');
+}
 function renderDaily() {
   const [from, to] = monthRange(dYear, dMonth);
   const now = new Date();
@@ -1347,13 +1380,7 @@ function renderDaily() {
   const sellerSum = {};
   rows.forEach(r => Object.keys(r.sellers).forEach(id => { sellerSum[id] = (sellerSum[id] || 0) + r.sellers[id]; }));
   const sIds = Object.keys(sellerSum).filter(id => sellerSum[id] !== 0).sort((a, b) => sellerOrder(a) - sellerOrder(b));
-  document.getElementById('d-stats').innerHTML = `
-    <div class="stat-box"><div class="stat-label">単日合計の月計</div><div class="stat-value">${yen(sum('total'))}</div></div>
-    <div class="stat-box"><div class="stat-label">アクア合計</div><div class="stat-value">${yen(sum('aquaTotal'))}</div></div>
-    <div class="stat-box accent"><div class="stat-label">アクア</div><div class="stat-value">${yen(sum('aquaNet'))}</div></div>
-    ${sIds.map(id => `<div class="stat-box gold"><div class="stat-label">${escapeHtml(sellerName(id))}</div><div class="stat-value">${yen(sellerSum[id])}</div></div>`).join('')}
-    ${otherIds.filter(id => otherSum(id)).map(id => `<div class="stat-box"><div class="stat-label">${escapeHtml(placeName(id))}</div><div class="stat-value">${yen(otherSum(id))}</div></div>`).join('')}
-    <div class="stat-box"><div class="stat-label">PayPay</div><div class="stat-value">${yen(sum('paypay'))}</div></div>`;
+  document.getElementById('d-stats').innerHTML = dailySplitStats(rows, otherIds);
   const wrap = document.getElementById('d-table');
   if (rows.length === 0) { wrap.innerHTML = '<div class="empty-state">この月の記録はありません</div>'; return; }
   const v = n => n ? yen(n) : '';
@@ -1380,7 +1407,7 @@ function renderDaily() {
       <td style="white-space:normal;" ${ed(r, i, 'note', mainFor(r))}>${escapeHtml((r.closed ? ['休み'] : []).concat(r.notes).join(' / '))}</td>
       <td class="col-last num">${r.empty ? '' : yen(r.total)}</td>
     </tr>`).join('')}</tbody>
-    <tfoot><tr class="row-total"><td class="col-first">合計</td><td class="num">${yen(sum('aquaTotal'))}</td><td class="num">${yen(sum('aquaNet'))}</td>${sIds.map(id => `<td class="num">${yen(sellerSum[id])}</td>`).join('')}${otherIds.map(id => `<td class="num">${yen(otherSum(id))}</td>`).join('')}<td class="num">${yen(sum('paypay'))}</td><td></td><td class="col-last num">${yen(sum('total'))}</td></tr></tfoot>
+    <tfoot>${dailyFootRows(rows, sIds, otherIds).map(f => `<tr class="row-total"><td class="col-first">${f.label}</td><td class="num">${yen(f.sum('aquaTotal'))}</td><td class="num">${yen(f.sum('aquaNet'))}</td>${sIds.map(id => `<td class="num">${yen(f.seller(id))}</td>`).join('')}${otherIds.map(id => `<td class="num">${f.mobile ? '' : yen(f.other(id))}</td>`).join('')}<td class="num">${yen(f.sum('paypay'))}</td><td></td><td class="col-last num">${yen(f.sum('total'))}</td></tr>`).join('')}</tfoot>
   </table>`;
   // 日付・休み・自動計算のマスはその日の詳細を開く。金額のマスはその場で直す
   wrap.querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', e => {
@@ -2150,8 +2177,9 @@ function printMonth() {
   const P = aggregate(aquaRows(...monthRange(py, pm)).rows);
   const diff = A.total - P.total;
   let html = rpHead(dYear + '年' + dMonth + '月　無人販売 売上報告', from.replace(/-/g, '/') + ' 〜 ' + to.replace(/-/g, '/'));
-  html += `<div class="rp-stats">${rpBox('単日合計の月計', yen(A.total))}${rpBox('アクア合計', yen(sum('aquaTotal')))}${rpBox('アクア', yen(sum('aquaNet')), 'accent')}${sIds.map(id => rpBox(sellerName(id), yen(sellerSum[id]), 'gold')).join('')}${otherIds.filter(id => otherSum(id)).map(id => rpBox(placeName(id), yen(otherSum(id)))).join('')}${rpBox('PayPay', yen(sum('paypay')))}</div>`;
-  html += `<div class="rp-stats">${rpBox('無人販売合計', yen(A.uTotal))}${rpBox('移動販売合計(' + A.mCount + '回)', yen(A.mTotal))}${rpBox('営業日数(無人)', A.days + '日')}${rpBox('休み', A.closed + '日')}${rpBox('1日平均(無人)', A.days ? yen(A.uTotal / A.days) : '-')}${rpBox('前月比(' + pm + '月)', P.total ? (diff >= 0 ? '+' : '−') + yen(Math.abs(diff)).replace('−', '') + ' (' + pct(diff / P.total * 100) + ')' : '-')}</div>`;
+  html += `<div class="rp-stats">${dailySplitStats(rows, otherIds).replace(/stat-group-label/g, 'rp-group').replace(/stat-box/g, 'rp-box').replace(/stat-label/g, 'l').replace(/stat-value/g, 'v')}</div>`;
+  const uDiff = A.uTotal - P.uTotal;
+  html += `<div class="rp-stats">${rpBox('営業日数(無人)', A.days + '日')}${rpBox('休み', A.closed + '日')}${rpBox('1日平均(無人)', A.days ? yen(A.uTotal / A.days) : '-')}${rpBox('無人販売の前月比(' + pm + '月)', P.uTotal ? (uDiff >= 0 ? '+' : '−') + yen(Math.abs(uDiff)).replace('−', '') + ' (' + pct(uDiff / P.uTotal * 100) + ')' : '-')}</div>`;
   // 日ごとのグラフ
   const days = daysInMonth(dYear, dMonth), dayKey = d => dYear + '-' + pad2(dMonth) + '-' + pad2(d);
   const per = (d, mob) => rows.filter(r => r.date === dayKey(d) && r.mobile === mob).reduce((a, r) => a + r.total, 0);
@@ -2165,7 +2193,7 @@ function printMonth() {
     rows.map(r => (r.closed && !r.total && !r.friends)
       ? `<tr><td>${fmtMD(r.date)}</td><td class="closed" colspan="${colsN}">休み</td><td></td></tr>`
       : `<tr><td>${fmtMD(r.date)}${r.mobile ? ' <span style="color:#555">移動' + (r.events.length ? '・' + escapeHtml(r.events.join('・')) : '') + '</span>' : ''}</td><td class="num">${v(r.aquaTotal)}</td><td class="num ${r.aquaNet < 0 ? 'neg' : ''}">${v(r.aquaNet)}</td>${sIds.map(id => `<td class="num">${v(r.sellers[id])}</td>`).join('')}${otherIds.map(id => `<td class="num">${r.mobile ? '' : v(r.placeCash[id])}</td>`).join('')}<td class="num">${v(r.paypay)}</td><td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.notes.join(' / '))}</td><td class="num"><b>${r.empty ? '' : yen(r.total)}</b></td></tr>`).join('')
-  }</tbody><tfoot><tr class="total"><td>合計</td><td class="num">${yen(sum('aquaTotal'))}</td><td class="num">${yen(sum('aquaNet'))}</td>${sIds.map(id => `<td class="num">${yen(sellerSum[id])}</td>`).join('')}${otherIds.map(id => `<td class="num">${yen(otherSum(id))}</td>`).join('')}<td class="num">${yen(sum('paypay'))}</td><td></td><td class="num">${yen(sum('total'))}</td></tr></tfoot></table>`;
+  }</tbody><tfoot>${dailyFootRows(rows).map(f => `<tr class="total"><td>${f.label}</td><td class="num">${yen(f.sum('aquaTotal'))}</td><td class="num">${yen(f.sum('aquaNet'))}</td>${sIds.map(id => `<td class="num">${yen(f.seller(id))}</td>`).join('')}${otherIds.map(id => `<td class="num">${f.mobile ? '' : yen(f.other(id))}</td>`).join('')}<td class="num">${yen(f.sum('paypay'))}</td><td></td><td class="num">${yen(f.sum('total'))}</td></tr>`).join('')}</tfoot></table>`;
   html += `<div class="rp-note">アクア=アクア合計−知り合いの売上(PayPay・幸福駅は含まない)。単日合計=現金+幸福駅+PayPay。</div>`;
   printReport(html, false);
 }
