@@ -206,6 +206,13 @@
   .toast { position: fixed; right: 16px; bottom: 16px; background: var(--text-primary); color: #fff; font-size: 13px; padding: 10px 14px; border-radius: 8px; z-index: 4000; opacity: 0; transform: translateY(8px); transition: opacity .2s, transform .2s; pointer-events: none; max-width: 80vw; }
   .toast.show { opacity: 0.94; transform: translateY(0); }
 
+  .pu-lines { width: 100%; max-width: 760px; border-collapse: collapse; min-width: 560px; }
+  .pu-lines th { font-size: 12px; padding: 4px 6px 4px 0; border-bottom: none; }
+  .pu-lines th.num { text-align: right; padding-right: 12px; }
+  .pu-lines td { padding: 3px 6px 3px 0; border-bottom: none; }
+  .pu-lines td:nth-child(1) { width: 26%; } .pu-lines td:nth-child(2) { width: 13%; } .pu-lines td:nth-child(3) { width: 15%; }
+  .pu-lines td:nth-child(4) { width: 15%; text-align: right; font-variant-numeric: tabular-nums; } .pu-lines td:nth-child(6) { width: 30px; }
+  .pu-lines .cell-input { width: 100%; min-width: 0; padding: 6px; font-size: 14px; }
   .st-lines { width: 100%; border-collapse: collapse; min-width: 520px; }
   .st-lines th { font-size: 12px; padding: 4px 6px; }
   .st-lines td { padding: 3px 4px; border-bottom: none; }
@@ -295,6 +302,7 @@
   <div class="tabs">
     <button class="tab-btn active" data-tab="input">売上入力</button>
     <button class="tab-btn" data-tab="summary">集計</button>
+    <button class="tab-btn" data-tab="shiire">仕入れ</button>
     <button class="tab-btn" data-tab="master">マスタ</button>
   </div>
 
@@ -424,6 +432,44 @@
       </div>
       <div class="card"><h2>内訳</h2><div id="r-chart"></div></div>
       <div class="card"><div class="scroll-wrap" style="max-height:none;"><div class="zoom-target" id="r-table"></div></div></div>
+    </div>
+  </div>
+
+  <!-- 仕入れ -->
+  <div class="panel" id="panel-shiire">
+    <div class="card">
+      <h2 id="pu-heading">仕入れを記録</h2>
+      <div class="form-row">
+        <div class="field" style="max-width:200px;"><label for="pu-date">日付</label><input id="pu-date" type="date"></div>
+        <div class="field" style="max-width:220px;"><label for="pu-seller">仕入れ先</label><select id="pu-seller"></select></div>
+      </div>
+      <div style="overflow-x:auto;"><table class="pu-lines"><thead><tr><th>品名</th><th class="num">数量</th><th class="num">単価(1個)</th><th class="num">金額</th><th>備考</th><th></th></tr></thead><tbody id="pu-lines"></tbody></table></div>
+      <datalist id="pu-items"></datalist>
+      <button type="button" class="btn-ghost" id="pu-add-line" style="margin-top:6px;">+ 品目を追加</button>
+      <div class="total-preview" id="pu-total" style="margin-top:12px;"></div>
+      <div class="error-text" id="pu-error"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="pu-submit">記録する</button>
+        <button class="btn-ghost" id="pu-cancel" style="display:none;">編集をやめる</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="nav-row">
+        <button class="btn-ghost" id="pu-prev">← 前月</button>
+        <h2 id="pu-title"></h2>
+        <button class="btn-ghost" id="pu-next">次月 →</button>
+      </div>
+      <div class="form-row" style="align-items:flex-end;">
+        <div class="field" style="max-width:220px;"><label for="pu-filter">仕入れ先でしぼる</label><select id="pu-filter"></select></div>
+        <button class="btn-text" id="pu-jump" style="display:none; margin-bottom:6px;">今月に戻る</button>
+      </div>
+      <div class="scroll-wrap"><div class="zoom-target" id="pu-table"></div></div>
+    </div>
+    <div class="card">
+      <h2 id="pu-sum-title">この月の仕入れ合計</h2>
+      <div class="stat-grid" id="pu-stats"></div>
+      <h3>仕入れ先・品名ごと</h3>
+      <div class="scroll-wrap" style="max-height:none;"><div class="zoom-target" id="pu-sum"></div></div>
     </div>
   </div>
 
@@ -754,19 +800,20 @@ let places = [];   // place_<id>
 let sellers = [];  // seller_<id>
 let sales = [];    // sale_<id>   売上(回収した金額)
 let stocks = [];   // stock_<id>  知り合いの品出し・残数
+let purchases = []; // shiire_<id> 知り合いからの仕入れ
 let loadedOnce = false;
 // 明細書の発行元(未保存のときは最初の明細書の内容を使う)
 const DEFAULT_COMPANY = { name: '(有)アクア農園　山本 祐助', zip: '868-0443', address: '熊本県球磨郡あさぎり町深田南418番地', tel: '0966-47-2220', fax: '0966-47-2221' };
 let companyInfo = Object.assign({}, DEFAULT_COMPANY);
 const COMPANY_KEY = 'setting_company';
 
-const PREFIX = { place: 'place_', seller: 'seller_', sale: 'sale_', stock: 'stock_' };
+const PREFIX = { place: 'place_', seller: 'seller_', sale: 'sale_', stock: 'stock_', purchase: 'shiire_' };
 function keyOf(kind, rec) { return PREFIX[kind] + rec.id; }
 
 async function loadData() {
   try {
     const rows = await sheetStorage.getAll();
-    const np = [], ns = [], nsa = [], nst = [];
+    const np = [], ns = [], nsa = [], nst = [], npu = [];
     rows.forEach(([key, value]) => {
       if (typeof key !== 'string' || !value) return;
       let obj;
@@ -775,9 +822,10 @@ async function loadData() {
       else if (key.indexOf(PREFIX.seller) === 0) ns.push(obj);
       else if (key.indexOf(PREFIX.sale) === 0) nsa.push(obj);
       else if (key.indexOf(PREFIX.stock) === 0) nst.push(obj);
+      else if (key.indexOf(PREFIX.purchase) === 0) npu.push(obj);
       else if (key === COMPANY_KEY) companyInfo = Object.assign({}, DEFAULT_COMPANY, obj);
     });
-    places = np; sellers = ns; sales = nsa; stocks = nst;
+    places = np; sellers = ns; sales = nsa; stocks = nst; purchases = npu;
     sortMasters();
     loadedOnce = true;
     saveToCache();
@@ -794,13 +842,13 @@ function sortMasters() {
   sellers.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 }
 function saveToCache() {
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ places, sellers, sales, stocks, companyInfo, loadedOnce, cachedAt: Date.now() })); } catch (e) { /* ignore */ }
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ places, sellers, sales, stocks, purchases, companyInfo, loadedOnce, cachedAt: Date.now() })); } catch (e) { /* ignore */ }
 }
 function loadFromCache() {
   try {
     const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
     if (!c) return false;
-    places = c.places || []; sellers = c.sellers || []; sales = c.sales || []; stocks = c.stocks || [];
+    places = c.places || []; sellers = c.sellers || []; sales = c.sales || []; stocks = c.stocks || []; purchases = c.purchases || [];
     if (c.companyInfo) companyInfo = Object.assign({}, DEFAULT_COMPANY, c.companyInfo);
     sortMasters();
     return true;
@@ -933,6 +981,7 @@ function activeTab() { const b = document.querySelector('.tab-btn.active'); retu
 function renderTab(tab) {
   if (tab === 'input') { renderSaleForm(false); renderDaily(); }
   if (tab === 'summary') renderAnalysis();
+  if (tab === 'shiire') { renderPurchaseForm(); renderPurchases(); }
   if (tab === 'master') { renderMaster(); fillCompanyForm(); }
 }
 function renderAll() {
@@ -1921,7 +1970,7 @@ function renderMaster() {
     sw.querySelectorAll('[data-sedit]').forEach(b => b.addEventListener('click', () => openSellerModal(b.dataset.sedit)));
     sw.querySelectorAll('[data-sdel]').forEach(b => b.addEventListener('click', async () => {
       const s = sellerById(b.dataset.sdel);
-      const used = stocks.some(x => x.sellerId === s.id) || sales.some(x => (x.extras || []).some(e => e.sellerId === s.id));
+      const used = stocks.some(x => x.sellerId === s.id) || purchases.some(x => x.sellerId === s.id) || sales.some(x => (x.extras || []).some(e => e.sellerId === s.id));
       if (!(await showConfirm('「' + s.name + '」を削除しますか？' + (used ? '\n過去の記録は残り、集計では「(削除済みの出品者)」と表示されます。' : '')))) return;
       sellers = sellers.filter(x => x.id !== s.id);
       renderMaster();
@@ -2023,7 +2072,7 @@ document.getElementById('setup-default-btn').addEventListener('click', async () 
 
 // ===== バックアップ・復元 =====
 document.getElementById('backup-download-btn').addEventListener('click', () => {
-  const backup = { appName: 'アクア農園無人販売管理', version: 1, exportedAt: new Date().toISOString(), places, sellers, sales, stocks, companyInfo };
+  const backup = { appName: 'アクア農園無人販売管理', version: 1, exportedAt: new Date().toISOString(), places, sellers, sales, stocks, purchases, companyInfo };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -2042,16 +2091,16 @@ document.getElementById('backup-restore-input').addEventListener('change', async
   if (!data || data.appName !== 'アクア農園無人販売管理' || !Array.isArray(data.places) || !Array.isArray(data.sales)) {
     showSaveModal('このファイルは無人販売管理のバックアップではないようです', false); return;
   }
-  const np = data.places, ns = data.sellers || [], nsa = data.sales, nst = data.stocks || [];
+  const np = data.places, ns = data.sellers || [], nsa = data.sales, nst = data.stocks || [], npu = data.purchases || [];
   const ok = await showConfirm('このファイルの内容で、今のデータを置き換えます。\n販売場所 ' + np.length + '件・出品者 ' + ns.length + '件・売上 ' + nsa.length + '件\n(この操作は取り消せません。不安なときは先に「バックアップをダウンロード」してください)', '置き換える');
   if (!ok) return;
   if (data.companyInfo) companyInfo = Object.assign({}, DEFAULT_COMPANY, data.companyInfo);
   const newPairs = [].concat(data.companyInfo ? [[COMPANY_KEY, JSON.stringify(companyInfo)]] : [], 
     np.map(r => [keyOf('place', r), JSON.stringify(r)]), ns.map(r => [keyOf('seller', r), JSON.stringify(r)]),
-    nsa.map(r => [keyOf('sale', r), JSON.stringify(r)]), nst.map(r => [keyOf('stock', r), JSON.stringify(r)])
+    nsa.map(r => [keyOf('sale', r), JSON.stringify(r)]), nst.map(r => [keyOf('stock', r), JSON.stringify(r)]), npu.map(r => [keyOf('purchase', r), JSON.stringify(r)])
   );
   const newKeys = {}; newPairs.forEach(p => { newKeys[p[0]] = true; });
-  const oldKeys = [].concat(places.map(r => keyOf('place', r)), sellers.map(r => keyOf('seller', r)), sales.map(r => keyOf('sale', r)), stocks.map(r => keyOf('stock', r)))
+  const oldKeys = [].concat(places.map(r => keyOf('place', r)), sellers.map(r => keyOf('seller', r)), sales.map(r => keyOf('sale', r)), stocks.map(r => keyOf('stock', r)), purchases.map(r => keyOf('purchase', r)))
     .filter(k => !newKeys[k]);
   const prog = document.getElementById('progress-modal');
   const msg = document.getElementById('progress-message');
@@ -2059,7 +2108,7 @@ document.getElementById('backup-restore-input').addEventListener('change', async
   try {
     if (oldKeys.length) { msg.textContent = '古いデータを整理しています…'; await sheetStorage.batch('deleteBatch', oldKeys); }
     await sheetStorage.batch('setBatch', newPairs, (done, all) => { msg.textContent = done + ' / ' + all + ' 件'; });
-    places = np; sellers = ns; sales = nsa; stocks = nst;
+    places = np; sellers = ns; sales = nsa; stocks = nst; purchases = npu;
     sortMasters(); loadedOnce = true; saveToCache();
     prog.style.display = 'none';
     showSaveModal('復元しました(' + newPairs.length + '件)', true);
@@ -2347,6 +2396,181 @@ document.getElementById('ci-save').addEventListener('click', async () => {
   try { await sheetStorage.set(COMPANY_KEY, JSON.stringify(companyInfo)); saveToCache(); showSaveModal('発行元を保存しました', true); }
   catch (e) { if (!e.unauthorized) showSaveModal('保存に失敗しました。もう一度お試しください', false); }
 });
+
+// ===== 仕入れ =====
+let puYear = new Date().getFullYear(), puMonth = new Date().getMonth() + 1;
+let editingPurchaseId = null;
+function puSellerOptions(sel, withAll) {
+  return (withAll ? '<option value="">すべて</option>' : '<option value="">選んでください</option>')
+    + sellers.map(s => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
+}
+function readPuLines() {
+  return [...document.querySelectorAll('#pu-lines tr.pu-row')].map(tr => ({
+    item: tr.querySelector('.pu-i').value, qty: tr.querySelector('.pu-q').value, price: tr.querySelector('.pu-p').value, note: tr.querySelector('.pu-n').value
+  }));
+}
+function renderPuLines(lines) {
+  const tb = document.getElementById('pu-lines');
+  tb.innerHTML = lines.map((l, i) => `<tr class="pu-row">
+    <td><input class="cell-input pu-i" list="pu-items" placeholder="例: なす" value="${escapeHtml(l.item)}"></td>
+    <td><input class="cell-input num pu-q" type="number" inputmode="numeric" step="1" placeholder="0" value="${escapeHtml(l.qty)}"></td>
+    <td><input class="cell-input num pu-p" type="number" inputmode="numeric" step="1" placeholder="0" value="${escapeHtml(l.price)}"></td>
+    <td class="pu-a"></td>
+    <td><input class="cell-input pu-n" value="${escapeHtml(l.note)}"></td>
+    <td>${lines.length > 1 ? `<button type="button" class="btn-text-danger pu-del" data-i="${i}" aria-label="この行を消す">×</button>` : ''}</td></tr>`).join('');
+  tb.querySelectorAll('input').forEach(el => el.addEventListener('input', updatePuTotal));
+  tb.querySelectorAll('.pu-del').forEach(b => b.addEventListener('click', () => { const c = readPuLines(); c.splice(parseInt(b.dataset.i, 10), 1); renderPuLines(c); }));
+  updatePuTotal();
+}
+function updatePuTotal() {
+  let total = 0, qty = 0;
+  document.querySelectorAll('#pu-lines tr.pu-row').forEach(tr => {
+    const q = toNum(tr.querySelector('.pu-q').value), v = q * toNum(tr.querySelector('.pu-p').value);
+    tr.querySelector('.pu-a').textContent = v ? yen(v) : '';
+    total += v; qty += q;
+  });
+  document.getElementById('pu-total').textContent = total || qty ? '合計 ' + qty + '個　' + yen(total) : '';
+}
+// 品名の候補(過去の仕入れ+出品者のいつもの品名)
+function updatePuItemList() {
+  const sid = document.getElementById('pu-seller').value;
+  const names = [];
+  const add = n => { n = String(n || '').trim(); if (n && names.indexOf(n) === -1) names.push(n); };
+  purchases.slice().sort((a, b) => (a.sellerId === sid ? 0 : 1) - (b.sellerId === sid ? 0 : 1) || (b.date < a.date ? -1 : 1)).forEach(p => add(p.item));
+  sellers.forEach(s => add(s.itemName));
+  document.getElementById('pu-items').innerHTML = names.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+}
+// 仕入れ先を選んだとき、空の1行目にその人の前回の品名・単価を入れる
+function prefillPuLine() {
+  const sid = document.getElementById('pu-seller').value;
+  const lines = readPuLines();
+  if (!sid || lines.length !== 1 || lines[0].item || lines[0].price) { updatePuItemList(); return; }
+  const last = purchases.filter(p => p.sellerId === sid).sort((a, b) => a.date !== b.date ? (a.date < b.date ? 1 : -1) : (b.createdAt || 0) - (a.createdAt || 0))[0];
+  const sl = sellerById(sid) || {};
+  lines[0].item = last ? last.item : (sl.itemName || '');
+  lines[0].price = last ? last.unitPrice : (sl.unitPrice || '');
+  renderPuLines(lines);
+  updatePuItemList();
+}
+function renderPurchaseForm() {
+  const d = document.getElementById('pu-date');
+  if (!d.value) d.value = todayStr();
+  const sel = document.getElementById('pu-seller');
+  const cur = sel.value;
+  sel.innerHTML = puSellerOptions(cur);
+  if (!document.querySelector('#pu-lines tr.pu-row')) renderPuLines([{ item: '', qty: '', price: '', note: '' }]);
+  updatePuItemList();
+}
+function resetPurchaseForm(keep) {
+  editingPurchaseId = null;
+  document.getElementById('pu-heading').textContent = '仕入れを記録';
+  document.getElementById('pu-submit').textContent = '記録する';
+  document.getElementById('pu-cancel').style.display = 'none';
+  document.getElementById('pu-add-line').style.display = '';
+  if (!keep) document.getElementById('pu-seller').value = '';
+  renderPuLines([{ item: '', qty: '', price: '', note: '' }]);
+  document.getElementById('pu-error').classList.remove('show');
+}
+document.getElementById('pu-seller').addEventListener('change', prefillPuLine);
+document.getElementById('pu-add-line').addEventListener('click', () => {
+  const c = readPuLines(); const last = c[c.length - 1] || {};
+  c.push({ item: '', qty: '', price: '', note: '' }); renderPuLines(c);
+  const ins = document.querySelectorAll('#pu-lines .pu-i'); ins[ins.length - 1].focus();
+});
+document.getElementById('pu-cancel').addEventListener('click', () => resetPurchaseForm(false));
+document.getElementById('pu-submit').addEventListener('click', async () => {
+  const date = document.getElementById('pu-date').value;
+  const sellerId = document.getElementById('pu-seller').value;
+  const err = document.getElementById('pu-error');
+  const lines = readPuLines().filter(l => l.item.trim() || String(l.qty).trim() || String(l.price).trim());
+  const showErr = m => { err.textContent = m; err.classList.add('show'); };
+  if (!date) return showErr('日付を選んでください');
+  if (!sellerId) return showErr('仕入れ先を選んでください(いない人はマスタの「出品者」に追加してください)');
+  if (!lines.length) return showErr('品名と数量を入力してください');
+  if (lines.some(l => !l.item.trim() || !toNum(l.qty))) return showErr('品名と数量が入っていない行があります');
+  err.classList.remove('show');
+  const btn = document.getElementById('pu-submit'); btn.disabled = true;
+  const recs = [];
+  lines.forEach((l, i) => {
+    const fields = { date, sellerId, item: l.item.trim(), qty: toNum(l.qty), unitPrice: toNum(l.price), note: l.note.trim() };
+    let rec = i === 0 && editingPurchaseId ? purchases.find(p => p.id === editingPurchaseId) : null;
+    if (rec) Object.assign(rec, fields, { updatedAt: Date.now() });
+    else { rec = Object.assign({ id: uid(), createdAt: Date.now() + i }, fields); purchases.push(rec); }
+    recs.push(rec);
+  });
+  let ok = true;
+  for (const r of recs) { if (!(await saveRecord('purchase', r))) ok = false; }
+  btn.disabled = false;
+  const total = recs.reduce((a, r) => a + r.qty * r.unitPrice, 0);
+  const wasEdit = !!editingPurchaseId;
+  [puYear, puMonth] = date.split('-').map(Number);
+  if (ok) {
+    showSaveModal((wasEdit ? '更新しました:' : '記録しました:') + fmtMD(date) + ' ' + sellerName(sellerId) + ' ' + recs.map(r => r.item + ' ' + r.qty + '個').join('・') + '(' + yen(total) + ')', true);
+    resetPurchaseForm(!wasEdit);
+  } else showSaveModal('保存できなかった項目があります。「最新に更新」を押して確認してください', false);
+  renderPurchases();
+});
+function editPurchase(id) {
+  const p = purchases.find(x => x.id === id); if (!p) return;
+  editingPurchaseId = id;
+  document.getElementById('pu-heading').textContent = fmtMD(p.date) + 'の仕入れを編集';
+  document.getElementById('pu-submit').textContent = '更新する';
+  document.getElementById('pu-cancel').style.display = 'inline-block';
+  document.getElementById('pu-add-line').style.display = 'none';
+  document.getElementById('pu-date').value = p.date;
+  document.getElementById('pu-seller').value = p.sellerId;
+  renderPuLines([{ item: p.item, qty: p.qty, price: p.unitPrice, note: p.note || '' }]);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+async function deletePurchase(id) {
+  const p = purchases.find(x => x.id === id); if (!p) return;
+  if (!(await showConfirm(fmtMD(p.date) + ' ' + sellerName(p.sellerId) + '「' + p.item + ' ' + p.qty + '個」の仕入れを削除しますか？'))) return;
+  purchases = purchases.filter(x => x.id !== id);
+  if (editingPurchaseId === id) resetPurchaseForm(false);
+  renderPurchases();
+  if (await deleteRecord('purchase', id)) showToast('削除しました');
+}
+function renderPurchases() {
+  const [from, to] = monthRange(puYear, puMonth);
+  const now = new Date();
+  document.getElementById('pu-title').textContent = puYear + '年' + puMonth + '月';
+  document.getElementById('pu-sum-title').textContent = puYear + '年' + puMonth + '月の仕入れ合計';
+  document.getElementById('pu-jump').style.display = (puYear === now.getFullYear() && puMonth === now.getMonth() + 1) ? 'none' : 'inline-block';
+  const fsel = document.getElementById('pu-filter'); const fv = fsel.value;
+  fsel.innerHTML = puSellerOptions(fv, true);
+  const fid = fsel.value;
+  const list = purchases.filter(p => p.date >= from && p.date <= to && (!fid || p.sellerId === fid))
+    .sort((a, b) => a.date !== b.date ? (a.date < b.date ? -1 : 1) : sellerOrder(a.sellerId) - sellerOrder(b.sellerId) || (a.createdAt || 0) - (b.createdAt || 0));
+  const amt = p => toNum(p.qty) * toNum(p.unitPrice);
+  const totalAmt = list.reduce((a, p) => a + amt(p), 0), totalQty = list.reduce((a, p) => a + toNum(p.qty), 0);
+  const wrap = document.getElementById('pu-table');
+  wrap.innerHTML = list.length ? `<table class="fixed-table">
+    <colgroup><col style="width:100px"><col style="width:110px"><col style="width:130px"><col style="width:80px"><col style="width:90px"><col style="width:100px"><col style="width:180px"><col style="width:110px"></colgroup>
+    <thead><tr><th class="col-first">日付</th><th>仕入れ先</th><th>品名</th><th class="num">数量</th><th class="num">単価</th><th class="num">金額</th><th>備考</th><th></th></tr></thead>
+    <tbody>${list.map(p => `<tr><td class="col-first ${weekdayOf(p.date) === '日' ? 'sun' : weekdayOf(p.date) === '土' ? 'sat' : ''}">${fmtMD(p.date)}</td><td>${escapeHtml(sellerName(p.sellerId))}</td><td>${escapeHtml(p.item)}</td><td class="num">${toNum(p.qty).toLocaleString('ja-JP')}個</td><td class="num">${yen(p.unitPrice)}</td><td class="num">${yen(amt(p))}</td><td style="white-space:normal;">${escapeHtml(p.note || '')}</td><td style="white-space:nowrap;"><button class="btn-text" data-pu-edit="${p.id}">編集</button><button class="btn-text-danger" data-pu-del="${p.id}">削除</button></td></tr>`).join('')}</tbody>
+    <tfoot><tr class="row-total"><td class="col-first">合計</td><td></td><td></td><td class="num">${totalQty.toLocaleString('ja-JP')}個</td><td></td><td class="num">${yen(totalAmt)}</td><td></td><td></td></tr></tfoot></table>`
+    : '<div class="empty-state">この月の仕入れ記録はありません</div>';
+  wrap.querySelectorAll('[data-pu-edit]').forEach(b => b.addEventListener('click', () => editPurchase(b.dataset.puEdit)));
+  wrap.querySelectorAll('[data-pu-del]').forEach(b => b.addEventListener('click', () => deletePurchase(b.dataset.puDel)));
+  // 仕入れ先ごと・品名ごと
+  const bySeller = {};
+  list.forEach(p => { const k = p.sellerId; bySeller[k] = bySeller[k] || { qty: 0, amt: 0, items: {} }; bySeller[k].qty += toNum(p.qty); bySeller[k].amt += amt(p);
+    const it = bySeller[k].items[p.item] = bySeller[k].items[p.item] || { qty: 0, amt: 0, n: 0 }; it.qty += toNum(p.qty); it.amt += amt(p); it.n++; });
+  const sids = Object.keys(bySeller).sort((a, b) => sellerOrder(a) - sellerOrder(b));
+  document.getElementById('pu-stats').innerHTML = `<div class="stat-box"><div class="stat-label">仕入れ金額</div><div class="stat-value">${yen(totalAmt)}</div></div><div class="stat-box"><div class="stat-label">仕入れ個数</div><div class="stat-value">${totalQty.toLocaleString('ja-JP')}個</div></div>`
+    + sids.map(id => `<div class="stat-box gold"><div class="stat-label">${escapeHtml(sellerName(id))}</div><div class="stat-value">${yen(bySeller[id].amt)}</div></div>`).join('');
+  document.getElementById('pu-sum').innerHTML = sids.length ? `<table class="fixed-table">
+    <colgroup><col style="width:120px"><col style="width:140px"><col style="width:80px"><col style="width:90px"><col style="width:110px"></colgroup>
+    <thead><tr><th class="col-first">仕入れ先</th><th>品名</th><th class="num">回数</th><th class="num">数量</th><th class="num">金額</th></tr></thead>
+    <tbody>${sids.map(id => Object.keys(bySeller[id].items).map((nm, i) => { const it = bySeller[id].items[nm]; return `<tr><td class="col-first">${i === 0 ? escapeHtml(sellerName(id)) : ''}</td><td>${escapeHtml(nm)}</td><td class="num">${it.n}回</td><td class="num">${it.qty.toLocaleString('ja-JP')}個</td><td class="num">${yen(it.amt)}</td></tr>`; }).join('')
+      + `<tr class="row-strong"><td class="col-first"></td><td>${escapeHtml(sellerName(id))} 計</td><td></td><td class="num">${bySeller[id].qty.toLocaleString('ja-JP')}個</td><td class="num">${yen(bySeller[id].amt)}</td></tr>`).join('')}</tbody></table>`
+    : '<div class="empty-state">この月の仕入れ記録はありません</div>';
+  applyZoom();
+}
+document.getElementById('pu-prev').addEventListener('click', () => { [puYear, puMonth] = stepMonth(puYear, puMonth, -1); renderPurchases(); });
+document.getElementById('pu-next').addEventListener('click', () => { [puYear, puMonth] = stepMonth(puYear, puMonth, 1); renderPurchases(); });
+document.getElementById('pu-jump').addEventListener('click', () => { puYear = new Date().getFullYear(); puMonth = new Date().getMonth() + 1; renderPurchases(); });
+document.getElementById('pu-filter').addEventListener('change', renderPurchases);
 
 // ===== 起動 =====
 document.getElementById('refresh-data-btn').addEventListener('click', async () => {
