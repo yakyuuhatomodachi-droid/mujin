@@ -213,6 +213,9 @@
   .pu-lines td:nth-child(1) { width: 26%; } .pu-lines td:nth-child(2) { width: 13%; } .pu-lines td:nth-child(3) { width: 15%; }
   .pu-lines td:nth-child(4) { width: 15%; text-align: right; font-variant-numeric: tabular-nums; } .pu-lines td:nth-child(6) { width: 30px; }
   .pu-lines .cell-input { width: 100%; min-width: 0; padding: 6px; font-size: 14px; }
+  .ok-mark { color: #2E7D4F; font-weight: 700; } .ng-mark { color: var(--danger); font-weight: 700; }
+  .fixed-table tr.ng td { background: var(--danger-light); }
+  .st-check { font-size: 14px; margin: -4px 0 12px; padding: 8px 12px; border-radius: 6px; background: var(--bg); }
   .st-lines { width: 100%; border-collapse: collapse; min-width: 520px; }
   .st-lines th { font-size: 12px; padding: 4px 6px; }
   .st-lines td { padding: 3px 4px; border-bottom: none; }
@@ -462,6 +465,7 @@
       <div class="form-row" style="align-items:flex-end;">
         <div class="field" style="max-width:220px;"><label for="pu-filter">仕入れ先でしぼる</label><select id="pu-filter"></select></div>
         <button class="btn-text" id="pu-jump" style="display:none; margin-bottom:6px;">今月に戻る</button>
+        <button class="btn-ghost" id="pu-statement" style="margin:0 0 4px auto;">🧾 この月の仕入れ明細書</button>
       </div>
       <div class="scroll-wrap"><div class="zoom-target" id="pu-table"></div></div>
     </div>
@@ -470,6 +474,12 @@
       <div class="stat-grid" id="pu-stats"></div>
       <h3>仕入れ先・品名ごと</h3>
       <div class="scroll-wrap" style="max-height:none;"><div class="zoom-target" id="pu-sum"></div></div>
+    </div>
+    <div class="card">
+      <h2 id="pu-check-title">売上記録との照合</h2>
+      <p class="hint" style="margin-top:0;">売上入力で記録した「知り合いの売上」の金額と、仕入れの金額をくらべます。人の名前を押すと、日ごとのちがいが見られます。</p>
+      <div class="scroll-wrap" style="max-height:none;"><div class="zoom-target" id="pu-check"></div></div>
+      <div id="pu-check-days" style="margin-top:14px;"></div>
     </div>
   </div>
 
@@ -565,9 +575,9 @@
 
 <div class="modal-overlay" id="statement-modal" style="display:none;">
   <div class="modal-box" style="max-width:760px;">
-    <div class="modal-header"><h3>出品者の明細書を作る</h3><button class="modal-close" data-close="statement-modal" aria-label="閉じる">×</button></div>
+    <div class="modal-header"><h3 id="st-modal-title">出品者の明細書を作る</h3><button class="modal-close" data-close="statement-modal" aria-label="閉じる">×</button></div>
     <div class="form-row">
-      <div class="field" style="min-width:150px;"><label for="st-seller">出品者</label><select id="st-seller"></select></div>
+      <div class="field" style="min-width:150px;"><label for="st-seller" id="st-seller-label">出品者</label><select id="st-seller"></select></div>
       <div class="field" style="max-width:170px;"><label for="st-from">期間(はじめ)</label><input id="st-from" type="date"></div>
       <div class="field" style="max-width:170px;"><label for="st-to">期間(おわり)</label><input id="st-to" type="date"></div>
     </div>
@@ -577,10 +587,12 @@
       <div class="field" style="max-width:200px;"><label for="st-tax">消費税</label>
         <select id="st-tax"><option value="0">税込み(消費税は0円と表示)</option><option value="8">8%を加算</option><option value="10">10%を加算</option></select></div>
     </div>
-    <div class="section-label">内容 <span class="hint" style="font-weight:400;">(売上入力の記録から自動で入ります。直したり行を足したりできます)</span></div>
+    <div class="form-row"><div class="field"><label for="st-lead">宛名の下の文</label><input id="st-lead" type="text"></div></div>
+    <div class="section-label">内容 <span class="hint" style="font-weight:400;">(<span id="st-src">売上入力</span>の記録から自動で入ります。直したり行を足したりできます)</span></div>
     <div style="overflow-x:auto;"><table class="st-lines"><thead><tr><th>商品名</th><th class="num">単価</th><th class="num">数量</th><th class="num">金額</th><th></th></tr></thead><tbody id="st-lines"></tbody></table></div>
     <button type="button" class="btn-ghost" id="st-add" style="margin-top:6px;">+ 行を追加</button>
     <div class="total-preview" id="st-total" style="margin-top:12px;"></div>
+    <div class="st-check" id="st-check" style="display:none;"></div>
     <div class="btn-row">
       <button type="button" class="btn btn-primary" id="st-print">🖨 明細書を印刷・PDF保存</button>
       <span class="hint">印刷の画面で「PDFに保存」を選ぶとPDFになります</span>
@@ -2331,29 +2343,58 @@ function updateStTotal() {
   });
   const c = stCalc();
   document.getElementById('st-total').textContent = '小計 ' + yen(c.subtotal) + '　消費税 ' + yen(c.tax) + '　合計 ' + yen(c.total);
+  // 仕入れの明細書のときは、同じ期間の売上記録(知り合いの売上)とくらべる
+  const chk = document.getElementById('st-check');
+  if (typeof stMode !== 'undefined' && stMode === 'purchase') {
+    const sid = document.getElementById('st-seller').value;
+    const salesAmt = sellerSalesTotal(sid, document.getElementById('st-from').value, document.getElementById('st-to').value);
+    const d = c.subtotal - salesAmt;
+    chk.style.display = 'block';
+    chk.innerHTML = '売上記録の金額(' + escapeHtml(sellerName(sid)) + '・同じ期間):' + yen(salesAmt) + '　'
+      + (d === 0 ? '<span class="ok-mark">✓ 明細書の小計と一致しています</span>' : '<span class="ng-mark">⚠ 明細書の小計と ' + yen(Math.abs(d)) + (d > 0 ? ' 多い' : ' 少ない') + 'です</span>');
+  } else chk.style.display = 'none';
+}
+// 明細書は「売上(知り合いの売上)」と「仕入れ」の2種類
+let stMode = 'sales';
+const ST_LEAD = { sales: '下記の通り、ご請求申し上げます。', purchase: '下記の通り、お支払い申し上げます。' };
+function purchaseLinesFrom(sellerId, from, to) {
+  return purchases.filter(p => p.sellerId === sellerId && p.date >= from && p.date <= to)
+    .sort((a, b) => a.date !== b.date ? (a.date < b.date ? -1 : 1) : (a.createdAt || 0) - (b.createdAt || 0))
+    .map(p => { const [, m, d] = p.date.split('-').map(Number); return { name: m + '/' + d + ' ' + p.item + (p.note ? '(' + p.note + ')' : ''), price: toNum(p.unitPrice), qty: toNum(p.qty) }; });
 }
 function refreshStatement() {
   const sid = document.getElementById('st-seller').value;
   const sl = sellerById(sid) || {};
   document.getElementById('st-name').value = sl.fullName || sl.name || '';
-  renderStLines(statementLinesFrom(sid, document.getElementById('st-from').value, document.getElementById('st-to').value));
+  const f = document.getElementById('st-from').value, t = document.getElementById('st-to').value;
+  renderStLines(stMode === 'purchase' ? purchaseLinesFrom(sid, f, t) : statementLinesFrom(sid, f, t));
 }
-function openStatement() {
-  const [f, t] = monthRange(dYear, dMonth);
-  // その月に売上がある人を先に、いなければ全員から選ぶ
+function openStatement(mode, y, m, preferId) {
+  stMode = mode === 'purchase' ? 'purchase' : 'sales';
+  const P = stMode === 'purchase';
+  if (y === undefined) { y = dYear; m = dMonth; }
+  const [f, t] = monthRange(y, m);
+  // その月に記録がある人を先に、いなければ全員から選ぶ
   const has = {};
-  sales.filter(x => x.date >= f && x.date <= t).forEach(x => (x.extras || []).forEach(e => { if (toNum(e.amount)) has[e.sellerId] = true; }));
+  if (P) purchases.filter(x => x.date >= f && x.date <= t).forEach(x => { has[x.sellerId] = true; });
+  else sales.filter(x => x.date >= f && x.date <= t).forEach(x => (x.extras || []).forEach(e => { if (toNum(e.amount)) has[e.sellerId] = true; }));
   const sel = document.getElementById('st-seller');
   const list = sellers.slice().sort((a, b) => (has[b.id] ? 1 : 0) - (has[a.id] ? 1 : 0) || sellerOrder(a.id) - sellerOrder(b.id));
-  sel.innerHTML = list.map(x => `<option value="${x.id}">${escapeHtml(x.name)}${has[x.id] ? '' : '(この月は売上なし)'}</option>`).join('');
+  sel.innerHTML = list.map(x => `<option value="${x.id}">${escapeHtml(x.name)}${has[x.id] ? '' : (P ? '(この月は仕入れなし)' : '(この月は売上なし)')}</option>`).join('');
   if (!list.length) { showToast('マスタで出品者を登録してください'); return; }
+  if (preferId && list.some(x => x.id === preferId)) sel.value = preferId;
+  document.getElementById('st-modal-title').textContent = P ? '仕入れの明細書を作る' : '出品者の明細書を作る';
+  document.getElementById('st-seller-label').textContent = P ? '仕入れ先' : '出品者';
+  document.getElementById('st-src').textContent = P ? '仕入れ' : '売上入力';
+  document.getElementById('st-lead').value = ST_LEAD[stMode];
   document.getElementById('st-from').value = f;
   document.getElementById('st-to').value = t;
   document.getElementById('st-date').value = todayStr();
   refreshStatement();
   document.getElementById('statement-modal').style.display = 'flex';
 }
-document.getElementById('d-statement').addEventListener('click', openStatement);
+document.getElementById('pu-statement').addEventListener('click', () => openStatement('purchase', puYear, puMonth, document.getElementById('pu-filter').value));
+document.getElementById('d-statement').addEventListener('click', () => openStatement('sales'));
 ['st-seller', 'st-from', 'st-to'].forEach(id => document.getElementById(id).addEventListener('change', refreshStatement));
 document.getElementById('st-tax').addEventListener('change', updateStTotal);
 document.getElementById('st-add').addEventListener('click', () => {
@@ -2373,7 +2414,7 @@ document.getElementById('st-print').addEventListener('click', () => {
     <h1>明細書</h1>
     <div class="date">${reiwa(date)}</div>
     <div class="to">${escapeHtml(name)} 様</div>
-    <div class="lead">下記の通り、ご請求申し上げます。</div>
+    <div class="lead">${escapeHtml(document.getElementById('st-lead').value)}</div>
     <div class="from">${escapeHtml(ci.name || '')}<br>${ci.zip ? '〒 ' + escapeHtml(ci.zip) + '<br>' : ''}${escapeHtml(ci.address || '')}<br>${ci.tel ? 'TEL：' + escapeHtml(ci.tel) + '<br>' : ''}${ci.fax ? 'FAX：' + escapeHtml(ci.fax) : ''}</div>
     <div class="grand"><span>合計金額</span><span>${yen(c.total)}</span></div>
     <table class="lines"><colgroup><col style="width:46%"><col style="width:17%"><col style="width:17%"><col style="width:20%"></colgroup>
@@ -2530,6 +2571,52 @@ async function deletePurchase(id) {
   renderPurchases();
   if (await deleteRecord('purchase', id)) showToast('削除しました');
 }
+// ===== 売上記録との照合 =====
+function sellerSalesByDate(sellerId, from, to) {
+  const m = {};
+  sales.forEach(x => { if (x.date < from || x.date > to) return; (x.extras || []).forEach(e => { if (e.sellerId === sellerId && toNum(e.amount)) m[x.date] = (m[x.date] || 0) + toNum(e.amount); }); });
+  return m;
+}
+function sellerSalesTotal(sellerId, from, to) { return Object.values(sellerSalesByDate(sellerId, from, to)).reduce((a, b) => a + b, 0); }
+function sellerPurchaseByDate(sellerId, from, to) {
+  const m = {};
+  purchases.forEach(p => { if (p.sellerId === sellerId && p.date >= from && p.date <= to) m[p.date] = (m[p.date] || 0) + toNum(p.qty) * toNum(p.unitPrice); });
+  return m;
+}
+let puCheckSeller = null;
+function renderPurchaseCheck() {
+  const [from, to] = monthRange(puYear, puMonth);
+  document.getElementById('pu-check-title').textContent = puYear + '年' + puMonth + '月 売上記録との照合';
+  const ids = sellers.map(s => s.id).filter(id => sellerSalesTotal(id, from, to) || Object.keys(sellerPurchaseByDate(id, from, to)).length);
+  const wrap = document.getElementById('pu-check');
+  if (!ids.length) { wrap.innerHTML = '<div class="empty-state">この月は知り合いの売上も仕入れもありません</div>'; document.getElementById('pu-check-days').innerHTML = ''; return; }
+  const rows = ids.map(id => { const sa = sellerSalesTotal(id, from, to), pu = Object.values(sellerPurchaseByDate(id, from, to)).reduce((a, b) => a + b, 0); return { id, sa, pu, d: pu - sa }; });
+  const mark = d => d === 0 ? '<span class="ok-mark">✓ 一致</span>' : '<span class="ng-mark">⚠ ' + (d > 0 ? '仕入れが' : '仕入れが') + yen(Math.abs(d)) + (d > 0 ? '多い' : '少ない') + '</span>';
+  const tSa = rows.reduce((a, r) => a + r.sa, 0), tPu = rows.reduce((a, r) => a + r.pu, 0);
+  wrap.innerHTML = `<table class="fixed-table">
+    <colgroup><col style="width:130px"><col style="width:130px"><col style="width:130px"><col style="width:200px"></colgroup>
+    <thead><tr><th class="col-first">知り合い</th><th class="num">売上記録</th><th class="num">仕入れ</th><th>照合</th></tr></thead>
+    <tbody>${rows.map(r => `<tr class="clickable ${r.d ? 'ng' : ''}" data-chk="${r.id}"><td class="col-first"><button class="btn-text" style="padding:0;">${escapeHtml(sellerName(r.id))}</button></td><td class="num">${yen(r.sa)}</td><td class="num">${yen(r.pu)}</td><td>${mark(r.d)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr class="row-total"><td class="col-first">合計</td><td class="num">${yen(tSa)}</td><td class="num">${yen(tPu)}</td><td>${mark(tPu - tSa)}</td></tr></tfoot></table>`;
+  wrap.querySelectorAll('[data-chk]').forEach(tr => tr.addEventListener('click', () => { puCheckSeller = tr.dataset.chk; renderPurchaseCheckDays(); }));
+  if (puCheckSeller && ids.indexOf(puCheckSeller) === -1) puCheckSeller = null;
+  if (!puCheckSeller) { const ng = rows.find(r => r.d); puCheckSeller = ng ? ng.id : null; }
+  renderPurchaseCheckDays();
+}
+function renderPurchaseCheckDays() {
+  const box = document.getElementById('pu-check-days');
+  if (!puCheckSeller) { box.innerHTML = ''; return; }
+  const [from, to] = monthRange(puYear, puMonth);
+  const sa = sellerSalesByDate(puCheckSeller, from, to), pu = sellerPurchaseByDate(puCheckSeller, from, to);
+  const dates = Object.keys(Object.assign({}, sa, pu)).sort();
+  const detail = d => purchases.filter(p => p.sellerId === puCheckSeller && p.date === d).map(p => escapeHtml(p.item) + ' ' + p.qty + '個×' + yen(p.unitPrice)).join('、');
+  box.innerHTML = `<h3 style="margin-top:0;">${escapeHtml(sellerName(puCheckSeller).replace(/さん$/, ''))}さんの日ごと</h3><div class="scroll-wrap" style="max-height:none;"><table class="fixed-table">
+    <colgroup><col style="width:100px"><col style="width:110px"><col style="width:110px"><col style="width:110px"><col style="width:240px"></colgroup>
+    <thead><tr><th class="col-first">日付</th><th class="num">売上記録</th><th class="num">仕入れ</th><th class="num">差</th><th>仕入れの内容</th></tr></thead>
+    <tbody>${dates.map(d => { const a = sa[d] || 0, b = pu[d] || 0, x = b - a; return `<tr class="${x ? 'ng' : ''}"><td class="col-first">${fmtMD(d)}</td><td class="num">${a ? yen(a) : '-'}</td><td class="num">${b ? yen(b) : '-'}</td><td class="num">${x ? (x > 0 ? '+' : '−') + yen(Math.abs(x)) : '<span class="ok-mark">✓</span>'}</td><td style="white-space:normal; text-align:left;">${detail(d)}</td></tr>`; }).join('')}</tbody></table></div>
+    <p class="hint" style="margin:6px 0 0;">仕入れた日と売れた日がちがうと、日ごとでは差が出ても月の合計では合うことがあります。</p>`;
+  applyZoom();
+}
 function renderPurchases() {
   const [from, to] = monthRange(puYear, puMonth);
   const now = new Date();
@@ -2565,6 +2652,7 @@ function renderPurchases() {
     <tbody>${sids.map(id => Object.keys(bySeller[id].items).map((nm, i) => { const it = bySeller[id].items[nm]; return `<tr><td class="col-first">${i === 0 ? escapeHtml(sellerName(id)) : ''}</td><td>${escapeHtml(nm)}</td><td class="num">${it.n}回</td><td class="num">${it.qty.toLocaleString('ja-JP')}個</td><td class="num">${yen(it.amt)}</td></tr>`; }).join('')
       + `<tr class="row-strong"><td class="col-first"></td><td>${escapeHtml(sellerName(id))} 計</td><td></td><td class="num">${bySeller[id].qty.toLocaleString('ja-JP')}個</td><td class="num">${yen(bySeller[id].amt)}</td></tr>`).join('')}</tbody></table>`
     : '<div class="empty-state">この月の仕入れ記録はありません</div>';
+  renderPurchaseCheck();
   applyZoom();
 }
 document.getElementById('pu-prev').addEventListener('click', () => { [puYear, puMonth] = stepMonth(puYear, puMonth, -1); renderPurchases(); });
