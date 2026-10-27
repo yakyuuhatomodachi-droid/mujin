@@ -317,6 +317,25 @@
       <button class="btn btn-primary" id="setup-default-btn">販売場所を3か所作成する</button>
     </div>
     <div class="card">
+      <h2 id="d-stats-title">この月の合計</h2>
+      <div class="stat-grid" id="d-stats"></div>
+    </div>
+    <div class="card">
+      <div class="nav-row">
+        <button class="btn-ghost" id="d-prev">← 前月</button>
+        <h2 id="d-title"></h2>
+        <button class="btn-ghost" id="d-next">次月 →</button>
+      </div>
+      <div class="btn-row"><button class="btn-text" id="d-jump" style="display:none;">今月に戻る</button><button class="btn-ghost" id="d-statement" style="margin-left:auto;">🧾 出品者の明細書</button><button class="btn-ghost" id="d-print">🖨 この月を印刷(A4)</button></div>
+      <div class="btn-row" style="margin:10px 0;">
+        <span class="hint">金額や備考のマスを押すと、その場で直せます(Enterで保存、Escでやめる)。日付を押すとその日の詳細が開きます</span>
+        <div class="zoom-control">
+          <button type="button" class="btn-ghost zoom-out">−</button><span class="zoom-label">100%</span><button type="button" class="btn-ghost zoom-in">＋</button><button type="button" class="btn-text zoom-reset">リセット</button>
+        </div>
+      </div>
+      <div class="scroll-wrap"><div class="zoom-target" id="d-table"></div></div>
+    </div>
+    <div class="card" id="s-card">
       <h2 id="s-heading">売上を記録</h2>
       <div class="seg" id="s-mode">
         <button type="button" class="seg-btn active" data-mode="unmanned">無人販売</button>
@@ -340,25 +359,6 @@
         <button class="btn-ghost" id="s-closed">休みにする</button>
         <button class="btn-ghost" id="s-cancel" style="display:none;">編集をやめる</button>
       </div>
-    </div>
-    <div class="card">
-      <div class="nav-row">
-        <button class="btn-ghost" id="d-prev">← 前月</button>
-        <h2 id="d-title"></h2>
-        <button class="btn-ghost" id="d-next">次月 →</button>
-      </div>
-      <div class="btn-row"><button class="btn-text" id="d-jump" style="display:none;">今月に戻る</button><button class="btn-ghost" id="d-statement" style="margin-left:auto;">🧾 出品者の明細書</button><button class="btn-ghost" id="d-print">🖨 この月を印刷(A4)</button></div>
-      <div class="btn-row" style="margin:10px 0;">
-        <span class="hint">金額や備考のマスを押すと、その場で直せます(Enterで保存、Escでやめる)。日付を押すとその日の詳細が開きます</span>
-        <div class="zoom-control">
-          <button type="button" class="btn-ghost zoom-out">−</button><span class="zoom-label">100%</span><button type="button" class="btn-ghost zoom-in">＋</button><button type="button" class="btn-text zoom-reset">リセット</button>
-        </div>
-      </div>
-      <div class="scroll-wrap"><div class="zoom-target" id="d-table"></div></div>
-    </div>
-    <div class="card">
-      <h2 id="d-stats-title">この月の合計</h2>
-      <div class="stat-grid" id="d-stats"></div>
     </div>
   </div>
 
@@ -1228,7 +1228,7 @@ function editDay(date) {
   const ids = saleLayout().involved.map(p => p.id);
   const extra = sales.filter(s => s.date === date && ids.indexOf(s.placeId) !== -1).length - Object.keys(recs).length;
   if (extra > 0) showToast('この日は同じ場所の記録が複数あります。2件目以降は「日別一覧」から直してください');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  document.getElementById('s-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function editSale(id) {
   const s = sales.find(x => x.id === id);
@@ -1480,7 +1480,7 @@ function renderDaily() {
       setSaleMode('unmanned'); resetSaleForm();
       document.getElementById('s-date').value = row.date;
       updateDayNotice();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      document.getElementById('s-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
       showToast(fmtMD(row.date) + 'の入力欄を開きました');
       return;
     }
@@ -2206,13 +2206,23 @@ function printReport(html, landscape) {
   const wPx = Math.floor(pageW * MM), hPx = Math.floor(pageH * MM) - 4;
   document.getElementById('page-style').textContent = '@page { size: A4 ' + (landscape ? 'landscape' : 'portrait') + '; margin: 8mm; }';
   const area = document.getElementById('print-area');
-  area.innerHTML = `<div class="rp" style="display:inline-block; min-width:${wPx}px">${html}</div>`;
-  // 幅と高さを測って、はみ出す場合は縮小してA4 1枚に収める
+  area.innerHTML = `<div class="rp" style="width:${wPx}px; padding:0 2mm; box-sizing:border-box;">${html}</div>`;
+  // 幅と高さを測って、はみ出す場合は縮小してA4 1枚に収める。
+  // 高さで縮めるときは、その分だけ横に広げて組み直し、用紙の横幅いっぱいに使う
   area.style.cssText = 'display:block; position:absolute; left:-10000px; top:0;';
   const rp = area.firstElementChild;
-  const w = rp.offsetWidth, h = rp.offsetHeight;
-  const scale = Math.min(1, wPx / w, hPx / h) * 0.98;
-  if (scale < 0.98) { rp.style.zoom = scale; }
+  let scale = 1;
+  for (let k = 0; k < 8; k++) {
+    const W = Math.round(wPx / scale);
+    rp.style.width = W + 'px';
+    const w = Math.max(W, rp.scrollWidth), h = rp.offsetHeight;
+    const next = Math.min(1, wPx / w, hPx / h);
+    if (Math.abs(next - scale) < 0.004) { scale = Math.min(scale, next); break; }
+    scale = next;
+  }
+  scale *= 0.98;
+  rp.style.width = Math.round(wPx / scale) + 'px';
+  if (scale < 0.999) rp.style.zoom = scale;
   area.style.cssText = '';
   setTimeout(() => window.print(), 50);
 }
@@ -2276,7 +2286,7 @@ function printYear() {
   const wd = order.map(w => { const u = rows.filter(r => !r.mobile && weekdayOf(r.date) === w && r.total); return u.length ? u.reduce((a, r) => a + r.total, 0) / u.length : 0; });
   html += `<div style="display:flex; gap:14px;"><div style="flex:2;"><div class="rp-section">月ごとの売上</div>${barChart({ width: 680, height: 170, labels: months.map(mLabel), stacked: true, series: [{ name: '無人販売', color: '#5B7FD6', values: months.map(m => monthAgg[m].uTotal) }, { name: '移動販売', color: '#3A8A5C', values: months.map(m => monthAgg[m].mTotal) }] })}</div>
     <div style="flex:1;"><div class="rp-section">曜日ごとの1日平均(無人)</div>${barChart({ width: 340, height: 170, labels: order, series: [{ name: '1日平均', color: '#5B7FD6', values: wd }] })}</div></div>`;
-  const lines = lineDefs(Object.values(monthAgg), otherIds);
+  const lines = lineDefs(Object.values(monthAgg), otherIds).filter(l => l.cls !== 'row-sub' || l.get(FY)); // 1年間ずっと0の行は印刷しない
   const cols = [...months.slice(0, 6).map(m => ({ label: mLabel(m), a: monthAgg[m] })), { label: '上期', a: H1, half: true }, ...months.slice(6).map(m => ({ label: mLabel(m), a: monthAgg[m] })), { label: '下期', a: H2, half: true }, { label: '通期', a: FY, half: true }];
   html += `<div class="rp-section">月別集計</div><table class="rp-table"><thead><tr><th>項目</th>${cols.map(c => `<th class="num">${c.label}</th>`).join('')}</tr></thead><tbody>${
     lines.map(l => `<tr class="${l.cls === 'row-strong' ? 'strong' : 'sub'}"><td>${escapeHtml(l.label)}</td>${cols.map(c => { const x = l.get(c.a); return `<td class="num ${c.half ? 'half' : ''} ${x < 0 ? 'neg' : ''}">${x ? yen(x) : '-'}</td>`; }).join('')}</tr>`).join('')
