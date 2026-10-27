@@ -163,6 +163,8 @@
   .zoom-control span { font-size: 13px; min-width: 42px; text-align: center; }
 
   .stat-grid { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 0 0; }
+  .stat-group-label { width: 100%; font-size: 13px; font-weight: 700; margin: 6px 0 -4px; display: flex; align-items: center; gap: 6px; }
+  .stat-group-label i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
   .stat-box { flex: 1; min-width: 140px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
   .stat-box .stat-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
   .stat-box .stat-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -1550,18 +1552,17 @@ function lineDefs(aggs, otherIds) {
     return list.sort((x, y) => sellerOrder(x) - sellerOrder(y));
   };
   const L = [];
-  L.push({ label: '無人販売合計', cls: 'row-strong', get: a => a.uTotal });
-  L.push({ label: 'アクア', cls: 'row-sub', get: a => a.uAqua });
-  ids('uSellers').forEach(id => L.push({ label: sellerName(id), cls: 'row-sub', get: a => a.uSellers[id] || 0 }));
-  otherIds.forEach(id => L.push({ label: placeName(id), cls: 'row-sub', get: a => a.other[id] || 0 }));
-  L.push({ label: 'PayPay', cls: 'row-sub', get: a => a.uPaypay });
+  L.push({ label: '無人販売合計', grp: 'u', cls: 'row-strong', get: a => a.uTotal });
+  L.push({ label: 'アクア', grp: 'u', cls: 'row-sub', get: a => a.uAqua });
+  ids('uSellers').forEach(id => L.push({ label: sellerName(id), grp: 'u', cls: 'row-sub', get: a => a.uSellers[id] || 0 }));
+  otherIds.forEach(id => L.push({ label: placeName(id), grp: 'u', cls: 'row-sub', get: a => a.other[id] || 0 }));
+  L.push({ label: 'PayPay', grp: 'u', cls: 'row-sub', get: a => a.uPaypay });
   if (aggs.some(a => a.mTotal || a.mCount) || places.some(p => p.type === 'mobile')) {
-    L.push({ label: '移動販売合計', cls: 'row-strong', get: a => a.mTotal });
-    L.push({ label: 'アクア', cls: 'row-sub', get: a => a.mAqua });
-    ids('mSellers').forEach(id => L.push({ label: sellerName(id), cls: 'row-sub', get: a => a.mSellers[id] || 0 }));
-    L.push({ label: 'PayPay', cls: 'row-sub', get: a => a.mPaypay });
+    L.push({ label: '移動販売合計', grp: 'm', cls: 'row-strong', get: a => a.mTotal });
+    L.push({ label: 'アクア', grp: 'm', cls: 'row-sub', get: a => a.mAqua });
+    ids('mSellers').forEach(id => L.push({ label: sellerName(id), grp: 'm', cls: 'row-sub', get: a => a.mSellers[id] || 0 }));
+    L.push({ label: 'PayPay', grp: 'm', cls: 'row-sub', get: a => a.mPaypay });
   }
-  L.push({ label: '合計(無人+移動)', cls: 'row-strong', get: a => a.total });
   return L;
 }
 
@@ -1673,17 +1674,23 @@ function renderAnalysis() {
   if (aView === 'range') renderRange();
   applyZoom();
 }
+// 集計の合計:無人販売と移動販売を分けて出す
+function sumVals(o) { return Object.values(o || {}).reduce((a, b) => a + b, 0); }
+function splitStats(A) {
+  const box = (label, value, cls) => `<div class="stat-box ${cls || ''}"><div class="stat-label">${escapeHtml(label)}</div><div class="stat-value">${value}</div></div>`;
+  let html = `<div class="stat-group-label"><i style="background:var(--c1)"></i>無人販売</div>`
+    + box('無人販売合計', yen(A.uTotal)) + box('アクア', yen(A.uAqua), 'accent') + box('知り合い', yen(sumVals(A.uSellers)), 'gold')
+    + box('PayPay', yen(A.uPaypay)) + box('営業日数', A.days + '日') + box('1日平均', A.days ? yen(A.uTotal / A.days) : '-');
+  html += `<div class="stat-group-label" style="margin-top:12px;"><i style="background:var(--c2)"></i>移動販売</div>`
+    + box('移動販売合計(' + A.mCount + '回)', yen(A.mTotal)) + box('アクア', yen(A.mAqua), 'accent') + box('知り合い', yen(sumVals(A.mSellers)), 'gold')
+    + box('PayPay', yen(A.mPaypay)) + box('1回平均', A.mCount ? yen(A.mTotal / A.mCount) : '-');
+  return html;
+}
 function renderYearHeader() {
   document.getElementById('y-title').textContent = yFY + '年度(' + yFY + '年3月〜' + (yFY + 1) + '年2月)';
   const { from, to } = fyRange(yFY);
   const { rows } = aquaRows(from, to);
-  const A = aggregate(rows);
-  document.getElementById('y-stats').innerHTML = `
-    <div class="stat-box"><div class="stat-label">年度の売上合計</div><div class="stat-value">${yen(A.total)}</div></div>
-    <div class="stat-box"><div class="stat-label">無人販売合計</div><div class="stat-value">${yen(A.uTotal)}</div></div>
-    <div class="stat-box"><div class="stat-label">移動販売合計</div><div class="stat-value">${yen(A.mTotal)}</div></div>
-    <div class="stat-box accent"><div class="stat-label">アクア(無人+移動)</div><div class="stat-value">${yen(A.uAqua + A.mAqua)}</div></div>
-    <div class="stat-box"><div class="stat-label">営業日数(無人)</div><div class="stat-value">${A.days}日</div></div>`;
+  document.getElementById('y-stats').innerHTML = splitStats(aggregate(rows));
 }
 
 // ----- 月別 -----
@@ -1802,25 +1809,28 @@ function renderRange() {
   if (from > to) { const x = from; from = to; to = x; }
   const { rows, otherIds, mainPlace } = aquaRows(from, to);
   const A = aggregate(rows);
-  document.getElementById('r-stats').innerHTML = `
-    <div class="stat-box"><div class="stat-label">合計(無人+移動)</div><div class="stat-value">${yen(A.total)}</div></div>
-    <div class="stat-box"><div class="stat-label">無人販売合計</div><div class="stat-value">${yen(A.uTotal)}</div></div>
-    <div class="stat-box"><div class="stat-label">移動販売合計(${A.mCount}回)</div><div class="stat-value">${yen(A.mTotal)}</div></div>
-    <div class="stat-box"><div class="stat-label">営業日数(無人)</div><div class="stat-value">${A.days}日</div></div>
-    <div class="stat-box"><div class="stat-label">1日平均(無人)</div><div class="stat-value">${A.days ? yen(A.uTotal / A.days) : '-'}</div></div>`;
-  const share = v => A.total ? (Math.round(v / A.total * 1000) / 10).toFixed(1) + '%' : '-';
-  const items = [{ label: 'アクア(無人)', value: A.uAqua }]
-    .concat(Object.keys(A.sellers).filter(id => A.sellers[id]).sort((a, b) => sellerOrder(a) - sellerOrder(b)).map(id => ({ label: sellerName(id), value: A.sellers[id] })))
+  document.getElementById('r-stats').innerHTML = splitStats(A);
+  // 構成比は、無人販売・移動販売それぞれの合計に対する割合
+  const share = (v, g) => { const t = g === 'm' ? A.mTotal : A.uTotal; return t ? (Math.round(v / t * 1000) / 10).toFixed(1) + '%' : '-'; };
+  const sOrder = o => Object.keys(o).filter(id => o[id]).sort((a, b) => sellerOrder(a) - sellerOrder(b));
+  const uItems = [{ label: 'アクア', value: A.uAqua }]
+    .concat(sOrder(A.uSellers).map(id => ({ label: sellerName(id), value: A.uSellers[id] })))
     .concat(otherIds.filter(id => A.other[id]).map(id => ({ label: placeName(id), value: A.other[id] })))
-    .concat([{ label: 'PayPay(無人)', value: A.uPaypay }, { label: 'アクア(移動)', value: A.mAqua }, { label: 'PayPay(移動)', value: A.mPaypay }])
-    .filter(x => x.value);
-  items.forEach(x => { x.share = share(x.value); });
-  document.getElementById('r-chart').innerHTML = items.length ? hbarChart(items, 'var(--c1)') : '<div class="empty-state">この期間の記録はありません</div>';
+    .concat([{ label: 'PayPay', value: A.uPaypay }]).filter(x => x.value);
+  const mItems = [{ label: 'アクア', value: A.mAqua }]
+    .concat(sOrder(A.mSellers).map(id => ({ label: sellerName(id), value: A.mSellers[id] })))
+    .concat([{ label: 'PayPay', value: A.mPaypay }]).filter(x => x.value);
+  uItems.forEach(x => { x.share = share(x.value, 'u'); });
+  mItems.forEach(x => { x.share = share(x.value, 'm'); });
+  document.getElementById('r-chart').innerHTML = (uItems.length || mItems.length)
+    ? (uItems.length ? '<div class="section-label" style="margin-top:0;">無人販売(合計 ' + yen(A.uTotal) + ')</div>' + hbarChart(uItems, 'var(--c1)') : '')
+      + (mItems.length ? '<div class="section-label">移動販売(合計 ' + yen(A.mTotal) + ')</div>' + hbarChart(mItems, 'var(--c2)') : '')
+    : '<div class="empty-state">この期間の記録はありません</div>';
   const lines = lineDefs([A], otherIds);
   document.getElementById('r-table').innerHTML = rows.length ? `<table class="fixed-table">
     <colgroup><col style="width:160px"><col style="width:130px"><col style="width:100px"></colgroup>
     <thead><tr><th class="col-first">項目</th><th class="num">金額</th><th class="num">構成比</th></tr></thead>
-    <tbody>${lines.map(l => { const v = l.get(A); return `<tr class="${l.cls}"><td class="col-first">${escapeHtml(l.label)}</td><td class="num">${v ? yen(v) : '-'}</td><td class="num">${v ? share(v) : '-'}</td></tr>`; }).join('')}</tbody></table>` : '';
+    <tbody>${lines.map(l => { const v = l.get(A); return `<tr class="${l.cls}"><td class="col-first">${escapeHtml(l.label)}</td><td class="num">${v ? yen(v) : '-'}</td><td class="num">${v ? share(v, l.grp) : '-'}</td></tr>`; }).join('')}</tbody></table>` : '';
 }
 document.getElementById('r-from').addEventListener('change', () => { renderRange(); applyZoom(); });
 document.getElementById('r-to').addEventListener('change', () => { renderRange(); applyZoom(); });
@@ -2170,7 +2180,8 @@ function printYear() {
   const H1 = aggOf(months.slice(0, 6)), H2 = aggOf(months.slice(6)), FY = aggregate(rows);
   const mLabel = m => parseInt(m.slice(5), 10) + '月';
   let html = rpHead(yFY + '年度　無人販売 年間売上報告', yFY + '年3月 〜 ' + (yFY + 1) + '年2月');
-  html += `<div class="rp-stats">${rpBox('年度の売上合計', yen(FY.total))}${rpBox('無人販売合計', yen(FY.uTotal))}${rpBox('移動販売合計(' + FY.mCount + '回)', yen(FY.mTotal))}${rpBox('アクア(無人+移動)', yen(FY.uAqua + FY.mAqua), 'accent')}${rpBox('知り合い合計', yen(Object.values(FY.sellers).reduce((a, b) => a + b, 0)), 'gold')}${rpBox('PayPay', yen(FY.uPaypay + FY.mPaypay))}${rpBox('営業日数(無人)', FY.days + '日')}${rpBox('1日平均(無人)', FY.days ? yen(FY.uTotal / FY.days) : '-')}</div>`;
+  html += `<div class="rp-stats"><span class="rp-section" style="margin:0 6px 0 0; align-self:center;">無人販売</span>${rpBox('無人販売合計', yen(FY.uTotal))}${rpBox('アクア', yen(FY.uAqua), 'accent')}${rpBox('知り合い', yen(sumVals(FY.uSellers)), 'gold')}${rpBox('PayPay', yen(FY.uPaypay))}${rpBox('営業日数', FY.days + '日')}${rpBox('1日平均', FY.days ? yen(FY.uTotal / FY.days) : '-')}</div>`;
+  html += `<div class="rp-stats"><span class="rp-section" style="margin:0 6px 0 0; align-self:center;">移動販売</span>${rpBox('移動販売合計(' + FY.mCount + '回)', yen(FY.mTotal))}${rpBox('アクア', yen(FY.mAqua), 'accent')}${rpBox('知り合い', yen(sumVals(FY.mSellers)), 'gold')}${rpBox('PayPay', yen(FY.mPaypay))}${rpBox('1回平均', FY.mCount ? yen(FY.mTotal / FY.mCount) : '-')}</div>`;
   // 月ごとのグラフと曜日別を横に並べる
   const order = ['月', '火', '水', '木', '金', '土', '日'];
   const wd = order.map(w => { const u = rows.filter(r => !r.mobile && weekdayOf(r.date) === w && r.total); return u.length ? u.reduce((a, r) => a + r.total, 0) / u.length : 0; });
