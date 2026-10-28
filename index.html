@@ -548,7 +548,7 @@
 <div class="toast" id="toast"></div>
 <div class="chart-tip" id="chart-tip"></div>
 <div id="print-area"></div>
-<style id="page-style">@page { size: A4 portrait; margin: 8mm; }</style>
+<style id="page-style">@page { size: A4 portrait; margin: 0; }</style>
 
 <div class="modal-overlay" id="detail-modal" style="display:none;">
   <div class="modal-box">
@@ -2245,7 +2245,8 @@ const MM = 96 / 25.4; // 1mm あたりのピクセル
 function printReport(html, landscape) {
   const pageW = (landscape ? 297 : 210) - 16, pageH = (landscape ? 210 : 297) - 16; // 余白8mmずつ
   const wPx = Math.floor(pageW * MM), hPx = Math.floor(pageH * MM) - 4;
-  document.getElementById('page-style').textContent = '@page { size: A4 ' + (landscape ? 'landscape' : 'portrait') + '; margin: 8mm; }';
+  // 余白はブラウザの設定(余白なし/デフォルト)に左右されないよう、用紙の余白は0にして中身の側で8mm空ける
+  document.getElementById('page-style').textContent = '@page { size: A4 ' + (landscape ? 'landscape' : 'portrait') + '; margin: 0; } @media print { #print-area { padding: 8mm; box-sizing: border-box; width: ' + (landscape ? 297 : 210) + 'mm; } #print-area .rp { margin: 0 auto; } }';
   const area = document.getElementById('print-area');
   area.innerHTML = `<div class="rp" style="width:${wPx}px; padding:0 2mm; box-sizing:border-box;">${html}</div>`;
   // 幅と高さを測って、はみ出す場合は縮小してA4 1枚に収める。
