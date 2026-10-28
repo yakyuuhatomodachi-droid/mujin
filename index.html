@@ -987,6 +987,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
     renderTab(btn.dataset.tab);
+    updateFloatHead(false);
   });
 });
 function activeTab() { const b = document.querySelector('.tab-btn.active'); return b ? b.dataset.tab : 'input'; }
@@ -1487,7 +1488,47 @@ function renderDaily() {
     openDetail(row);
   }));
   applyZoom();
+  updateFloatHead(true);
 }
+// 日別一覧の見出し行:画面を下にスクロールして見えなくなったら、画面の上についてくる
+function updateFloatHead(rebuild) {
+  let fl = document.getElementById('d-float');
+  if (!fl) {
+    fl = document.createElement('div');
+    fl.id = 'd-float';
+    fl.style.cssText = 'position:fixed; top:0; overflow:hidden; z-index:60; display:none; box-shadow:0 2px 6px rgba(0,0,0,0.12); background:var(--bg);';
+    document.body.appendChild(fl);
+  }
+  const target = document.getElementById('d-table');
+  const table = target.querySelector('table');
+  const wrap = target.parentElement;
+  if (!table || activeTab() !== 'input') { fl.style.display = 'none'; return; }
+  if (rebuild || !fl.firstChild) {
+    const t = table.cloneNode(false);
+    const cg = table.querySelector('colgroup'); if (cg) t.appendChild(cg.cloneNode(true));
+    t.appendChild(table.querySelector('thead').cloneNode(true));
+    const z = document.createElement('div');
+    z.appendChild(t);
+    fl.innerHTML = ''; fl.appendChild(z);
+  }
+  fl.firstChild.style.zoom = target.style.zoom || '';
+  // 列の幅を本物の表とそろえる
+  const t2 = fl.querySelector('table');
+  const ths = table.querySelectorAll('thead th'), ths2 = t2.querySelectorAll('thead th'), cols2 = t2.querySelectorAll('col');
+  t2.style.width = table.offsetWidth + 'px'; t2.style.minWidth = '0';
+  ths.forEach((th, i) => { const w = th.offsetWidth + 'px'; if (cols2[i]) cols2[i].style.width = w; if (ths2[i]) { ths2[i].style.width = w; ths2[i].style.boxSizing = 'border-box'; } });
+  const r = wrap.getBoundingClientRect();
+  const head = table.querySelector('thead').getBoundingClientRect();
+  const show = r.top < 0 && r.bottom > head.height * 2;
+  fl.style.display = show ? 'block' : 'none';
+  if (!show) return;
+  fl.style.left = (r.left + wrap.clientLeft) + 'px';
+  fl.style.width = wrap.clientWidth + 'px';
+  fl.scrollLeft = wrap.scrollLeft;
+}
+window.addEventListener('scroll', () => updateFloatHead(false), { passive: true });
+window.addEventListener('resize', () => updateFloatHead(false));
+document.getElementById('d-table').parentElement.addEventListener('scroll', () => updateFloatHead(false), { passive: true });
 // その日・その場所の記録(休みを除く)
 function openRecordsOf(date, placeId) {
   return sales.filter(x => x.date === date && x.placeId === placeId && !isClosedRec(x)).sort(recOrder);
@@ -1931,7 +1972,7 @@ function applyZoom() {
   document.querySelectorAll('.zoom-target').forEach(el => { el.style.zoom = zoomLevel / 100; });
   document.querySelectorAll('.zoom-label').forEach(el => { el.textContent = zoomLevel + '%'; });
 }
-function setZoom(v) { zoomLevel = Math.max(50, Math.min(150, v)); try { localStorage.setItem(ZOOM_KEY, zoomLevel); } catch (e) { /* ignore */ } applyZoom(); }
+function setZoom(v) { zoomLevel = Math.max(50, Math.min(150, v)); try { localStorage.setItem(ZOOM_KEY, zoomLevel); } catch (e) { /* ignore */ } applyZoom(); updateFloatHead(false); }
 document.querySelectorAll('.zoom-in').forEach(b => b.addEventListener('click', () => setZoom(zoomLevel + 10)));
 document.querySelectorAll('.zoom-out').forEach(b => b.addEventListener('click', () => setZoom(zoomLevel - 10)));
 document.querySelectorAll('.zoom-reset').forEach(b => b.addEventListener('click', () => setZoom(100)));
